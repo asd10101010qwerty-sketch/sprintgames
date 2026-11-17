@@ -112,11 +112,15 @@ canvas{touch-action:none}
 .lan .url{font-family:Consolas,monospace;color:#ffd166;font-size:16px;font-weight:700;user-select:all;-webkit-user-select:all}
 .lan small{color:#6f7a8b}
 #touch{position:fixed;inset:0;pointer-events:none;z-index:6}
-#stick{position:absolute;left:max(18px,env(safe-area-inset-left));bottom:16px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.2);pointer-events:auto;touch-action:none}
-#knob{position:absolute;left:50%;top:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;background:rgba(255,255,255,.32);box-shadow:0 0 12px rgba(0,0,0,.4);pointer-events:none}
-#actBtn{position:absolute;right:max(22px,env(safe-area-inset-right));bottom:26px;width:108px;height:108px;border-radius:50%;background:rgba(255,209,102,.2);border:3px solid rgba(255,209,102,.75);color:#ffd166;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .08s}
-#actBtn.on{background:rgba(255,209,102,.45);transform:scale(.93)}
-#tPause{position:absolute;top:max(8px,env(safe-area-inset-top));right:max(8px,env(safe-area-inset-right));width:42px;height:42px;border-radius:10px;border:1px solid rgba(255,255,255,.22);background:rgba(0,0,0,.4);pointer-events:auto;display:flex;align-items:center;justify-content:center;cursor:pointer}
+#tzL,#tzR{position:absolute;top:0;bottom:0;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none}
+#tzL{left:0;width:50%}
+#tzR{right:0;width:50%}
+#stick{position:absolute;left:0;top:0;width:136px;height:136px;margin:-68px 0 0 -68px;border-radius:50%;background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.2);pointer-events:none;opacity:.45;transition:opacity .15s}
+#stick.on{opacity:1;background:rgba(255,255,255,.1)}
+#knob{position:absolute;left:50%;top:50%;width:60px;height:60px;margin:-30px 0 0 -30px;border-radius:50%;background:rgba(255,255,255,.4);box-shadow:0 0 14px rgba(0,0,0,.45);pointer-events:none}
+#actBtn{position:absolute;right:max(26px,env(safe-area-inset-right));bottom:max(26px,env(safe-area-inset-bottom));width:112px;height:112px;border-radius:50%;background:rgba(255,209,102,.16);border:3px solid rgba(255,209,102,.6);color:#ffd166;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;pointer-events:none;user-select:none;-webkit-user-select:none;opacity:.6;transition:transform .08s,opacity .08s}
+#actBtn.on{background:rgba(255,209,102,.45);transform:scale(.92);opacity:1}
+#tPause{position:absolute;top:max(6px,env(safe-area-inset-top));left:50%;margin-left:-22px;width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.22);background:rgba(0,0,0,.45);pointer-events:auto;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
 #tPause svg{width:18px;height:18px}
 #rotate{display:none}
 @media (orientation:portrait) and (pointer:coarse){
@@ -226,6 +230,7 @@ button.dlb svg{width:18px;height:18px}
 
 <div id="installBox" class="modal hidden"><div class="mbox"><button class="mx" id="installClose" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button><div id="installContent"></div></div></div>
 <div id="touch" class="hidden">
+  <div id="tzL"></div><div id="tzR"></div>
   <div id="stick"><div id="knob"></div></div>
   <div id="actBtn"><span id="actLbl">Огонь</span></div>
   <div id="tPause"><svg viewBox="0 0 24 24" fill="#e6e9ef"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></div>
@@ -518,6 +523,11 @@ function update(dt){
     if(!p.alive)continue;
     p.cd-=dt;p.rapid=Math.max(0,p.rapid-dt);p.recoil=Math.max(0,p.recoil-dt*6);
     const inp=input(p,dt);let turn=inp.x,mv=-inp.y;
+    if(inp.abs){
+      const m=Math.min(1,Math.hypot(inp.x,inp.y));
+      if(m>.05){const d=angDiff(Math.atan2(inp.y,inp.x),p.a);turn=clamp(d*4,-1,1);mv=Math.abs(d)<.7?m:Math.abs(d)<1.2?m*.35:0}
+      else{turn=0;mv=0}
+    }
     if(mv<0)mv*=.65;
     p.a+=turn*3.3*dt;
     if(mv){p.x+=Math.cos(p.a)*mv*165*dt;p.y+=Math.sin(p.a)*mv*165*dt;p.tread+=mv*dt*30}
@@ -769,7 +779,9 @@ function update(dt){
   for(const p of players){
     if(!p.alive)continue;
     const inp=input(p,dt);
-    p.a+=clamp(inp.x,-1,1)*TURN*dt;
+    let tn=clamp(inp.x,-1,1);
+    if(inp.abs)tn=Math.hypot(inp.x,inp.y)>.05?clamp(angDiff(Math.atan2(inp.y,inp.x),p.a)*3,-1,1):0;
+    p.a+=tn*TURN*dt;
     p.cd-=dt;p.jump-=dt;p.gap-=dt;p.nextGap-=dt;
     if(p.nextGap<=0){p.gap=.2;p.nextGap=rnd(2,3.5)}
     if(inp.act&&p.cd<=0&&p.jump<=0){p.jump=.45;p.cd=p.cdMax;beep(600,.15,'sine',.04,300)}
@@ -1240,7 +1252,7 @@ function sendSnap(){
   Net.fx=[];
 }
 function onHostMsg(from,d){
-  if(d.k==='in')Net.inputs[from]={x:clamp(+d.x||0,-1,1),y:clamp(+d.y||0,-1,1),act:!!d.act};
+  if(d.k==='in')Net.inputs[from]={x:clamp(+d.x||0,-1,1),y:clamp(+d.y||0,-1,1),act:!!d.act,abs:!!d.abs};
 }
 function onPeerLeft(pid){
   delete Net.inputs[pid];
@@ -1305,9 +1317,9 @@ function guestTick(dt){
 }
 function sendInput(){
   const on=state==='play',r=on?readCtrl(SOLO):{x:0,y:0,act:false};
-  const x=Math.round(r.x*10)/10,y=Math.round(r.y*10)/10,act=!!r.act;
-  const k=x+','+y+','+act,now=performance.now();
-  if(k!==Net.lastIn||now-Net.lastInT>250){Net.lastIn=k;Net.lastInT=now;relay({k:'in',x,y,act})}
+  const x=Math.round(r.x*10)/10,y=Math.round(r.y*10)/10,act=!!r.act,abs=!!r.abs;
+  const k=x+','+y+','+act+','+abs,now=performance.now();
+  if(k!==Net.lastIn||now-Net.lastInT>250){Net.lastIn=k;Net.lastInT=now;relay({k:'in',x,y,act,abs})}
 }
 
 $('onlineBtn').onclick=()=>setState('online');
@@ -1323,31 +1335,50 @@ $('lobbyLeave').onclick=()=>{netLeave();setState('online')};
    ===================================================================== */
 const isTouch=matchMedia('(pointer:coarse)').matches;
 const touch={on:isTouch,x:0,y:0,act:false};
+// abs:true — джойстик задаёт направление «куда ехать», а не «вперёд/поворот»
 function readCtrl(c){
-  let x=(held(c.right)?1:0)-(held(c.left)?1:0),y=(held(c.down)?1:0)-(held(c.up)?1:0),act=held(c.fire);
-  if(touch.on&&(c===SOLO||c===CTRL[0])){if(!x)x=touch.x;if(!y)y=touch.y;act=act||touch.act}
-  return{x,y,act};
+  let x=(held(c.right)?1:0)-(held(c.left)?1:0),y=(held(c.down)?1:0)-(held(c.up)?1:0),act=held(c.fire),abs=false;
+  if(touch.on&&(c===SOLO||c===CTRL[0])){
+    if(!x&&!y&&(touch.x||touch.y)){x=touch.x;y=touch.y;abs=true}
+    act=act||touch.act;
+  }
+  return{x,y,act,abs};
 }
 function updTouch(){
-  $('touch').classList.toggle('hidden',!(isTouch&&state==='play'));
+  const show=isTouch&&state==='play';
+  $('touch').classList.toggle('hidden',!show);
+  if(!show&&touch.reset)touch.reset();
   const r=G.rows[G.rows.length-1];$('actLbl').textContent=r?r[0]:'';
 }
 (function(){
-  const st=$('stick'),kn=$('knob'),ab=$('actBtn');let id=null;
+  const L=$('tzL'),Rz=$('tzR'),st=$('stick'),kn=$('knob'),ab=$('actBtn'),RAD=58;
+  let sid=null,aid=null,cx=0,cy=0;
+  const place=()=>{st.style.left=cx+'px';st.style.top=cy+'px'};
+  const home=()=>{cx=Math.max(96,innerWidth*.13);cy=innerHeight-Math.max(96,innerHeight*.27);place();kn.style.transform='';st.classList.remove('on')};
+  home();addEventListener('resize',()=>{if(sid===null)home()});
   const move=e=>{
-    const r=st.getBoundingClientRect(),R=r.width/2,m=R*.72;
-    let dx=e.clientX-(r.left+R),dy=e.clientY-(r.top+R);const d=Math.hypot(dx,dy);
-    if(d>m){dx=dx/d*m;dy=dy/d*m}
-    kn.style.transform=`translate(${dx}px,${dy}px)`;
-    let nx=dx/m,ny=dy/m;if(Math.hypot(nx,ny)<.22){nx=0;ny=0}
-    touch.x=nx;touch.y=ny;
+    let dx=e.clientX-cx,dy=e.clientY-cy;const d=Math.hypot(dx,dy);
+    // если палец ушёл далеко — джойстик «едет» за ним, чтобы не упираться в край
+    if(d>RAD*1.6){const k=(d-RAD*1.6)/d;cx+=dx*k;cy+=dy*k;place();dx=e.clientX-cx;dy=e.clientY-cy}
+    const dd=Math.hypot(dx,dy),kx=dd>RAD?dx/dd*RAD:dx,ky=dd>RAD?dy/dd*RAD:dy;
+    kn.style.transform=`translate(${kx}px,${ky}px)`;
+    let m=Math.min(1,dd/RAD);m=m<.18?0:Math.min(1,(m-.18)/.62);
+    const an=Math.atan2(dy,dx);touch.x=m?Math.cos(an)*m:0;touch.y=m?Math.sin(an)*m:0;
   };
-  st.addEventListener('pointerdown',e=>{id=e.pointerId;try{st.setPointerCapture(id)}catch{}move(e);e.preventDefault()});
-  st.addEventListener('pointermove',e=>{if(e.pointerId===id)move(e)});
-  const end=e=>{if(e.pointerId!==id)return;id=null;touch.x=touch.y=0;kn.style.transform=''};
-  st.addEventListener('pointerup',end);st.addEventListener('pointercancel',end);
-  const down=e=>{touch.act=true;ab.classList.add('on');e.preventDefault()},up=()=>{touch.act=false;ab.classList.remove('on')};
-  ab.addEventListener('pointerdown',down);ab.addEventListener('pointerup',up);ab.addEventListener('pointercancel',up);ab.addEventListener('pointerleave',up);
+  L.addEventListener('pointerdown',e=>{
+    if(sid!==null)return;sid=e.pointerId;try{L.setPointerCapture(sid)}catch{}
+    cx=e.clientX;cy=e.clientY;place();st.classList.add('on');move(e);e.preventDefault();
+  });
+  L.addEventListener('pointermove',e=>{if(e.pointerId===sid){move(e);e.preventDefault()}});
+  const endL=e=>{if(e.pointerId!==sid)return;sid=null;touch.x=touch.y=0;home()};
+  L.addEventListener('pointerup',endL);L.addEventListener('pointercancel',endL);L.addEventListener('lostpointercapture',endL);
+  Rz.addEventListener('pointerdown',e=>{
+    if(aid!==null)return;aid=e.pointerId;try{Rz.setPointerCapture(aid)}catch{}
+    touch.act=true;ab.classList.add('on');if(navigator.vibrate)navigator.vibrate(12);e.preventDefault();
+  });
+  const endR=e=>{if(e.pointerId!==aid)return;aid=null;touch.act=false;ab.classList.remove('on')};
+  Rz.addEventListener('pointerup',endR);Rz.addEventListener('pointercancel',endR);Rz.addEventListener('lostpointercapture',endR);
+  touch.reset=()=>{sid=aid=null;touch.x=touch.y=0;touch.act=false;ab.classList.remove('on');home()};
   $('tPause').onclick=()=>{if(state==='play')setState('pause')};
   addEventListener('contextmenu',e=>{if(isTouch)e.preventDefault()});
 })();
