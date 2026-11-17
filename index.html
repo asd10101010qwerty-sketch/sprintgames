@@ -1954,7 +1954,7 @@ if(sessionStorage.getItem('sgUpdated')){sessionStorage.removeItem('sgUpdated');s
 
 /* ---------- Аккаунты: Supabase Auth (Google или почта + обязательная двухшаговая проверка) ---------- */
 const SB_URL='https://keinvddvlpfbbtasmcpc.supabase.co';
-const SB_KEY=''; // publishable (anon) key проекта — публичный, его можно хранить в коде сайта
+const SB_KEY='sb_publishable_QAUcw8W-66bTc1jDRwUyNQ_if-x5CRz'; // publishable (anon) key проекта — публичный, его можно хранить в коде сайта
 const Auth={s:null,user:null,pending:null,next:null};
 const jwtPayload=t=>{try{return JSON.parse(decodeURIComponent(escape(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')))))}catch{return{}}};
 const AUTH_ERR={invalid_credentials:'Неверная почта или пароль',email_not_confirmed:'Почта ещё не подтверждена — откройте письмо и нажмите ссылку',
