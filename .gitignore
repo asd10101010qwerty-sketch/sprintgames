@@ -4,3 +4,4 @@ android/build/
 android/*.jks
 android/keystore.properties
 SprintGames.apk
+*.idsig
