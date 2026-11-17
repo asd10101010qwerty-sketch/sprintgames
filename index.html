@@ -1379,6 +1379,9 @@ $('modeSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
   if(Net.ws){const o=Net.ws;Net.ws=null;o.close()}
   lanInfo=null;renderLan();enterOnline();
 });
+// сайт по https (и его копия, установленная через Chrome) не может подключаться к серверу в локальной сети —
+// там только «Через интернет»: он работает и когда все в одной сети Wi-Fi
+if(location.protocol==='https:'){netMode='net';$('modeSeg').closest('.field').style.display='none'}
 renderMode();
 $('addr').onchange=()=>{localStorage.setItem('serverAddr',$('addr').value.trim());lanInfo=null;renderLan();netConnect().then(()=>netSend({t:'list'})).catch(()=>{})};
 const nick=()=>($('nick').value.trim()||'Игрок').slice(0,12);
@@ -1827,7 +1830,8 @@ function installSteps(){
 // установщик для Windows (122 МБ) не помещается в репозиторий — на сайте он качается из GitHub Releases
 const EXE_URL=FROM_SERVER?'/SprintGames-Setup.exe':'https://github.com/asd10101010qwerty-sketch/sprintgames/releases/latest/download/SprintGames-Setup.exe';
 function openInstall(){
-  if(installEvt&&!isAndroid){
+  // на Windows ставим настоящую программу, а не копию сайта в Chrome (в ней не работает Wi-Fi и плодятся ярлыки)
+  if(installEvt&&!isAndroid&&!/Windows/i.test(navigator.userAgent)){
     const e=installEvt;installEvt=null;
     e.prompt();e.userChoice.then(c=>{if(c.outcome!=='accepted')installEvt=e}).catch(()=>{});
     return;
