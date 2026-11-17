@@ -72,6 +72,9 @@ let nextPid = 1;
 const clean = (s, n, def) => (String(s || '').replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, n)) || def;
 const send = (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 
+const HEX = /^#[0-9a-f]{6}$/i;
+const cleanSkin = s => (!s || typeof s !== 'object') ? null : s.r ? { r: 1 } : (HEX.test(s.c) && HEX.test(s.d) ? { c: s.c, d: s.d } : null);
+
 function newId() {
   const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let id;
@@ -81,7 +84,7 @@ function newId() {
 function roomInfo(r) {
   return {
     id: r.id, name: r.name, max: r.max, game: r.game, state: r.state,
-    players: [...r.members.values()].map(m => ({ slot: m.slot, nick: m.nick, pid: m.pid })).sort((a, b) => a.slot - b.slot)
+    players: [...r.members.values()].map(m => ({ slot: m.slot, nick: m.nick, pid: m.pid, skin: m.skin || null })).sort((a, b) => a.slot - b.slot)
   };
 }
 function pushRoom(r) {
@@ -135,7 +138,7 @@ wss.on('connection', ws => {
           members: new Map()
         };
         rooms.set(room.id, room);
-        room.members.set(ws.pid, { ws, pid: ws.pid, slot: 0, nick: clean(m.nick, 12, 'Игрок') });
+        room.members.set(ws.pid, { ws, pid: ws.pid, slot: 0, nick: clean(m.nick, 12, 'Игрок'), skin: cleanSkin(m.skin) });
         ws.room = room;
         send(ws, { t: 'joined', id: room.id, pid: ws.pid, host: true });
         pushRoom(room);
@@ -153,7 +156,7 @@ wss.on('connection', ws => {
         const used = new Set([...room.members.values()].map(x => x.slot));
         let slot = 1;
         while (used.has(slot)) slot++;
-        room.members.set(ws.pid, { ws, pid: ws.pid, slot, nick: clean(m.nick, 12, 'Игрок') });
+        room.members.set(ws.pid, { ws, pid: ws.pid, slot, nick: clean(m.nick, 12, 'Игрок'), skin: cleanSkin(m.skin) });
         ws.room = room;
         send(ws, { t: 'joined', id: room.id, pid: ws.pid, host: false });
         pushRoom(room);
@@ -163,6 +166,12 @@ wss.on('connection', ws => {
       case 'leave':
         leave(ws);
         break;
+
+      case 'skin': {
+        const me = r && r.members.get(ws.pid);
+        if (me) { me.skin = cleanSkin(m.skin); pushRoom(r); }
+        break;
+      }
 
       case 'meta':
         if (!r || r.host !== ws) return;
