@@ -1,5 +1,6 @@
-// Сервер «Арены на четверых»: отдаёт страницу игры и пересылает данные между игроками.
+// Сервер SprintGames: отдаёт страницу игры и пересылает данные между игроками.
 // Запуск: node server.js   (порт можно задать переменной PORT)
+// Программа SprintGames для Windows подключает этот файл и запускает сервер через start().
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -17,7 +18,8 @@ const STATIC = {
   '/icons/apple-touch-icon.png': ['icons/apple-touch-icon.png', 'image/png'],
   '/icons/favicon-64.png': ['icons/favicon-64.png', 'image/png'],
   '/favicon.ico': ['icons/favicon-64.png', 'image/png'],
-  '/SprintGames.apk': ['SprintGames.apk', 'application/vnd.android.package-archive']
+  '/SprintGames.apk': ['SprintGames.apk', 'application/vnd.android.package-archive'],
+  '/SprintGames-Setup.exe': ['SprintGames-Setup.exe', 'application/octet-stream']
 };
 
 const server = http.createServer((req, res) => {
@@ -33,12 +35,13 @@ const server = http.createServer((req, res) => {
     res.end('ok');
   } else if (STATIC[url]) {
     const [file, type] = STATIC[url];
-    fs.readFile(path.join(__dirname, file), (err, data) => {
-      if (err) { res.writeHead(404); return res.end(); }
-      const headers = { 'Content-Type': type, 'Cache-Control': 'no-cache' };
-      if (file.endsWith('.apk')) headers['Content-Disposition'] = 'attachment; filename="SprintGames.apk"';
+    const full = path.join(__dirname, file);
+    fs.stat(full, (err, st) => {
+      if (err || !st.isFile()) { res.writeHead(404); return res.end(); }
+      const headers = { 'Content-Type': type, 'Content-Length': st.size, 'Cache-Control': 'no-cache' };
+      if (/\.(apk|exe)$/.test(file)) headers['Content-Disposition'] = `attachment; filename="${path.basename(file)}"`;
       res.writeHead(200, headers);
-      res.end(data);
+      fs.createReadStream(full).pipe(res); // большие файлы (установщик) отдаём потоком
     });
   } else if (url === '/info') {
     // приложение SprintGames ищет сервер в сети по этому адресу (поэтому разрешён доступ с любой страницы)
@@ -195,14 +198,27 @@ setInterval(() => {
   }
 }, 15000);
 
-server.on('error', err => {
-  if (err.code === 'EADDRINUSE') console.log(`Порт ${PORT} уже занят — похоже, сервер уже запущен.`);
-  else console.log('Ошибка сервера:', err.message);
-  process.exit(1);
-});
-
-server.listen(PORT, () => {
-  console.log(`\n[${new Date().toLocaleString('ru-RU')}] Арена запущена: http://localhost:${PORT}`);
+function logStart() {
+  console.log(`\n[${new Date().toLocaleString('ru-RU')}] SprintGames: сервер запущен на http://localhost:${PORT}`);
   for (const a of lanIps()) console.log(`  ${a.hotspot ? 'Точка доступа' : 'Локальная сеть'}: http://${a.address}:${PORT}   (${a.name})`);
   console.log('');
-});
+}
+
+if (require.main === module) {
+  // запуск командой node server.js
+  server.on('error', err => {
+    if (err.code === 'EADDRINUSE') console.log(`Порт ${PORT} уже занят — похоже, сервер уже запущен.`);
+    else console.log('Ошибка сервера:', err.message);
+    process.exit(1);
+  });
+  server.listen(PORT, logStart);
+} else {
+  // запуск из программы SprintGames для Windows
+  module.exports = {
+    start: () => new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(PORT, () => { server.off('error', reject); logStart(); resolve(PORT); });
+    }),
+    stop: () => new Promise(r => { for (const c of wss.clients) c.terminate(); server.close(() => r()); })
+  };
+}

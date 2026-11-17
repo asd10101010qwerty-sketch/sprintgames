@@ -1,0 +1,54 @@
+{
+  "name": "sprintgames-desktop",
+  "productName": "SprintGames",
+  "version": "1.0.0",
+  "description": "SprintGames — четыре мини-игры для компании",
+  "author": "SprintGames",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "prepare-app": "node prepare.js",
+    "start": "node prepare.js && electron .",
+    "dist": "node prepare.js && electron-builder --win nsis --x64"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "build": {
+    "appId": "com.sprintgames.desktop",
+    "productName": "SprintGames",
+    "copyright": "SprintGames",
+    "directories": {
+      "output": "dist",
+      "buildResources": "buildres"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "buildres/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SprintGames",
+      "uninstallDisplayName": "SprintGames",
+      "language": "1049",
+      "installerLanguages": [
+        "ru_RU"
+      ],
+      "artifactName": "SprintGames-Setup.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.3.3",
+    "electron-builder": "^26.18.0"
+  }
+}
