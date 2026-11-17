@@ -1781,6 +1781,8 @@ function installSteps(){
       <li>Нажмите меню ${ICO.dots} в правом верхнем углу.</li>
       <li>Выберите <b>«Установить приложение»</b> или <b>«Добавить на главный экран»</b>, затем <b>«Установить»</b>.</li></ol>`;
 }
+// установщик для Windows (122 МБ) не помещается в репозиторий — на сайте он качается из GitHub Releases
+const EXE_URL=FROM_SERVER?'/SprintGames-Setup.exe':'https://github.com/asd10101010qwerty-sketch/sprintgames/releases/latest/download/SprintGames-Setup.exe';
 function openInstall(){
   if(installEvt&&!isAndroid){
     const e=installEvt;installEvt=null;
@@ -1796,21 +1798,26 @@ function openInstall(){
   const head=`<div class="ihead"><img src="/icons/icon-192.png" alt="" onerror="this.style.display='none'"><div><div class="iname">SprintGames</div><div class="isub">4 мини-игры · с ботом и с друзьями</div></div></div>`;
   if(isTouch&&isAndroid){
     box.innerHTML=head+`<p>Настоящее приложение для Android: во весь экран, со своей иконкой, игра с ботом работает даже без сети.</p>`+apkBtn+apkSteps+
-      `<p class="note">Онлайн-игра с друзьями: приложение само найдёт сервер, если телефон в той же сети Wi-Fi или точке доступа.</p>`;
+      `<p class="note">Онлайн с друзьями работает через интернет, где бы они ни были. Если вы рядом — можно играть и в одной сети Wi-Fi.</p>`;
     $('installBox').classList.remove('hidden');
   }else if(isTouch){
     box.innerHTML=head+`<p>Приложение появится на главном экране телефона со своей иконкой:</p>`+installSteps()+
-      `<p class="note">Онлайн-игра с друзьями работает, когда телефон подключён к той же сети, что и компьютер с сервером.</p>`;
+      `<p class="note">Онлайн с друзьями работает через интернет, где бы они ни были.</p>`;
     $('installBox').classList.remove('hidden');
   }else{
     const isWin=/Windows/i.test(navigator.userAgent);
-    box.innerHTML=head+(isWin?`<p><b>Для этого компьютера</b> — программа SprintGames для Windows: своё окно, ярлык на рабочем столе, а если в сети нет сервера — программа сама станет сервером.</p>`+
-      `<a class="big apk" href="/SprintGames-Setup.exe" download="SprintGames-Setup.exe">${ICO.dl}Скачать для Windows</a>`+
+    box.innerHTML=head+(isWin?`<p><b>Для этого компьютера</b> — программа SprintGames для Windows: своё окно, ярлык на рабочем столе, онлайн с друзьями через интернет.</p>`+
+      `<a class="big apk" href="${EXE_URL}" download="SprintGames-Setup.exe">${ICO.dl}Скачать для Windows</a>`+
       `<p class="note">Если Windows покажет «Windows защитил ваш компьютер» — нажмите «Подробнее» → «Выполнить в любом случае» (программа не подписана платным сертификатом).</p>`:'')+
       `<p><b>Для телефона:</b></p><div class="lan" id="lanInstall"></div>`+
       `<p><b>На Android</b> — после открытия страницы нажмите в меню <b>«Скачать приложение»</b> и установите SprintGames.apk.</p>`+
       `<p><b>На iPhone</b> — откройте страницу в Safari, нажмите «Поделиться» ${ICO.share} и выберите «На экран Домой».</p>`;
     $('installBox').classList.remove('hidden');
+    if(!FROM_SERVER){ // сайт в интернете: QR ведёт на этот же сайт
+      const el=$('lanInstall'),url=location.origin+'/';
+      el.innerHTML=`<div class="qr">${QR.svg(url)}</div><div>Наведите камеру телефона на код или откройте:<br><span class="url">${esc(url)}</span></div>`;
+      return;
+    }
     loadLan().then(info=>{
       const el=$('lanInstall');if(!el)return;
       if(!info||!info.ips||!info.ips.length){el.outerHTML='<p class="note">Запустите сервер и откройте игру по адресу сети, чтобы появился QR-код для телефона.</p>';return}

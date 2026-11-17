@@ -1,7 +1,6 @@
 *.idsig
 *.log
 SprintGames-Setup.exe
-SprintGames.apk
 android/*.jks
 android/build/
 android/keystore.properties
