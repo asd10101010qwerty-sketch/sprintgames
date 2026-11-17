@@ -16,7 +16,8 @@ const STATIC = {
   '/icons/icon-512.png': ['icons/icon-512.png', 'image/png'],
   '/icons/apple-touch-icon.png': ['icons/apple-touch-icon.png', 'image/png'],
   '/icons/favicon-64.png': ['icons/favicon-64.png', 'image/png'],
-  '/favicon.ico': ['icons/favicon-64.png', 'image/png']
+  '/favicon.ico': ['icons/favicon-64.png', 'image/png'],
+  '/SprintGames.apk': ['SprintGames.apk', 'application/vnd.android.package-archive']
 };
 
 const server = http.createServer((req, res) => {
@@ -28,18 +29,21 @@ const server = http.createServer((req, res) => {
       res.end(data);
     });
   } else if (url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
     res.end('ok');
   } else if (STATIC[url]) {
     const [file, type] = STATIC[url];
     fs.readFile(path.join(__dirname, file), (err, data) => {
       if (err) { res.writeHead(404); return res.end(); }
-      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-cache' });
+      const headers = { 'Content-Type': type, 'Cache-Control': 'no-cache' };
+      if (file.endsWith('.apk')) headers['Content-Disposition'] = 'attachment; filename="SprintGames.apk"';
+      res.writeHead(200, headers);
       res.end(data);
     });
   } else if (url === '/info') {
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
-    res.end(JSON.stringify({ port: Number(PORT), ips: lanIps() }));
+    // приложение SprintGames ищет сервер в сети по этому адресу (поэтому разрешён доступ с любой страницы)
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ app: 'sprintgames', port: Number(PORT), ips: lanIps() }));
   } else {
     res.writeHead(404);
     res.end();

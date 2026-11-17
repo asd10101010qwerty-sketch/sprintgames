@@ -162,6 +162,8 @@ button.dlb svg{width:18px;height:18px}
 .steps b{color:#fff}
 .ii{width:18px;height:18px;vertical-align:-4px;color:#ffd166}
 .note{font-size:12px;color:#7d8798}
+a.big.apk{display:flex;align-items:center;justify-content:center;gap:10px;text-decoration:none;margin:12px 0;font-size:17px;font-weight:700;padding:13px 20px;border-radius:12px;color:#0b0e14;background:linear-gradient(90deg,#ffd166,#ffb347);box-shadow:0 6px 24px rgba(255,190,80,.3)}
+a.big.apk svg{width:20px;height:20px}
 </style>
 </head>
 <body>
@@ -296,6 +298,7 @@ addEventListener('keydown',e=>{
 });
 addEventListener('keyup',e=>keys.delete(e.code));
 addEventListener('blur',()=>{keys.clear();if(state==='play'&&!Net.online)setState('pause')});
+const IN_APP=!!window.SprintApp;
 const Net={ws:null,addr:'',ready:null,pid:0,host:false,room:null,inputs:{},online:false,inGame:false,fx:[],noRec:0,lastIn:'',lastInT:0,listT:0};
 const q=v=>Math.round(v*100)/100;
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -1128,7 +1131,7 @@ const crownSvg='<svg viewBox="0 0 24 24" fill="#ffd166"><path d="M3 8l4.5 4L12 5
 let maxSel=2,createGame=gi;
 $('nick').value=localStorage.getItem('nick')||('Игрок'+(100+ri(900)));
 $('nick').oninput=()=>localStorage.setItem('nick',$('nick').value);
-$('addr').value=location.protocol.startsWith('http')?location.host:(localStorage.getItem('serverAddr')||'localhost:3000');
+$('addr').value=IN_APP?(localStorage.getItem('serverAddr')||''):location.protocol.startsWith('http')?location.host:(localStorage.getItem('serverAddr')||'localhost:3000');
 $('addr').onchange=()=>{localStorage.setItem('serverAddr',$('addr').value.trim());netConnect().then(()=>netSend({t:'list'})).catch(()=>{})};
 const nick=()=>($('nick').value.trim()||'Игрок').slice(0,12);
 
@@ -1160,6 +1163,29 @@ function netConnect(){
   ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}onNet(m)};
   return Net.ready;
 }
+let finding=null;
+function findServer(){
+  if(finding)return finding;
+  if(state==='online')$('roomList').innerHTML='<div class="empty">Ищем сервер SprintGames в вашей сети Wi-Fi...</div>';
+  setStatus(false,'поиск сервера...');
+  let ips=(window.SprintApp&&SprintApp.getLocalIps?SprintApp.getLocalIps():'').split(',').filter(Boolean);
+  if(ips.some(ip=>!ip.startsWith('10.')))ips=ips.filter(ip=>!ip.startsWith('10.')); // 10.x — обычно мобильный интернет
+  ips.sort((a,b)=>b.startsWith('192.168.')-a.startsWith('192.168.'));
+  const cands=[],seen=new Set(),add=c=>{if(!seen.has(c)){seen.add(c);cands.push(c)}};
+  add('192.168.137.1:3000'); // точка доступа Windows
+  for(const ip of ips)add(ip.split('.').slice(0,3).join('.')+'.1:3000');
+  for(const ip of ips){const b=ip.split('.').slice(0,3).join('.');for(let i=2;i<255;i++)if(`${b}.${i}`!==ip)add(`${b}.${i}:3000`)}
+  const probe=c=>new Promise((res,rej)=>{
+    const ac=new AbortController(),t=setTimeout(()=>ac.abort(),1500);
+    fetch(`http://${c}/info`,{signal:ac.signal,cache:'no-store'}).then(r=>r.json())
+      .then(j=>{clearTimeout(t);j&&j.app==='sprintgames'?res(c):rej()}).catch(()=>{clearTimeout(t);rej()});
+  });
+  finding=(async()=>{
+    for(let i=0;i<cands.length;i+=48){try{return await Promise.any(cands.slice(i,i+48).map(probe))}catch{}}
+    return null;
+  })().finally(()=>{finding=null});
+  return finding;
+}
 function netSend(o){if(Net.ws&&Net.ws.readyState===1)Net.ws.send(JSON.stringify(o))}
 function relay(d){netSend({t:'relay',d})}
 function netLeave(){netSend({t:'leave'});Net.online=Net.inGame=Net.host=false;Net.room=null;Net.inputs={}}
@@ -1167,7 +1193,13 @@ function netLeave(){netSend({t:'leave'});Net.online=Net.inGame=Net.host=false;Ne
 function enterOnline(){
   renderCreate();
   if(!Net.ws||Net.ws.readyState!==1)renderRooms(undefined);
-  netConnect().then(()=>netSend({t:'list'})).catch(()=>{});
+  const go=()=>netConnect().then(()=>netSend({t:'list'}));
+  if(IN_APP&&!(Net.ws&&Net.ws.readyState===1)){
+    (($('addr').value.trim())?go():Promise.reject()).catch(()=>findServer().then(a=>{
+      if(!a){renderRooms(null);setStatus(false,'сервер не найден');return}
+      $('addr').value=a;localStorage.setItem('serverAddr',a);lanInfo=null;return go();
+    })).catch(()=>{});
+  }else go().catch(()=>{});
   if(!Net.listT)Net.listT=setInterval(()=>{if(state==='online')netSend({t:'list'})},2000);
 }
 function renderCreate(){
@@ -1180,6 +1212,11 @@ function renderCreate(){
 function renderRooms(rooms){
   const el=$('roomList');
   if(rooms===undefined){el.innerHTML='<div class="empty">Подключение к серверу...</div>';return}
+  if(rooms===null&&IN_APP){
+    el.innerHTML='<div class="empty">Сервер SprintGames не найден.<br>Подключите телефон к той же сети Wi-Fi или точке доступа, что и компьютер с игрой,<br>и проверьте, что сервер на компьютере запущен.<br><br><button class="ghost sm" id="rescanBtn">Искать снова</button></div>';
+    $('rescanBtn').onclick=()=>{$('addr').value='';if(Net.ws){const o=Net.ws;Net.ws=null;o.close()}enterOnline()};
+    return;
+  }
   if(rooms===null){
     el.innerHTML='<div class="empty">Не удалось подключиться к <b>'+esc($('addr').value)+'</b>.<br>Запустите сервер командой <kbd>node server.js</kbd> в папке игры<br>или впишите адрес в пункте «Другой адрес сервера» слева.</div>';return;
   }
@@ -1374,7 +1411,7 @@ function updTouch(){
   L.addEventListener('pointerup',endL);L.addEventListener('pointercancel',endL);L.addEventListener('lostpointercapture',endL);
   Rz.addEventListener('pointerdown',e=>{
     if(aid!==null)return;aid=e.pointerId;try{Rz.setPointerCapture(aid)}catch{}
-    touch.act=true;ab.classList.add('on');if(navigator.vibrate)navigator.vibrate(12);e.preventDefault();
+    touch.act=true;ab.classList.add('on');if(window.SprintApp&&SprintApp.vibrate)SprintApp.vibrate(14);else if(navigator.vibrate)navigator.vibrate(12);e.preventDefault();
   });
   const endR=e=>{if(e.pointerId!==aid)return;aid=null;touch.act=false;ab.classList.remove('on')};
   Rz.addEventListener('pointerup',endR);Rz.addEventListener('pointercancel',endR);Rz.addEventListener('lostpointercapture',endR);
@@ -1469,8 +1506,12 @@ const QR=(()=>{
    ===================================================================== */
 let lanInfo=null;
 function loadLan(){
-  if(lanInfo||!location.protocol.startsWith('http'))return Promise.resolve(lanInfo);
-  return fetch('/info',{cache:'no-store'}).then(r=>r.json()).then(j=>lanInfo=j).catch(()=>null);
+  if(lanInfo)return Promise.resolve(lanInfo);
+  let url;
+  if(IN_APP){const a=$('addr').value.trim().replace(/^\w+:\/\//,'');if(!a)return Promise.resolve(null);url='http://'+a+'/info'}
+  else if(location.protocol.startsWith('http'))url='/info';
+  else return Promise.resolve(null);
+  return fetch(url,{cache:'no-store'}).then(r=>r.json()).then(j=>lanInfo=j).catch(()=>null);
 }
 function renderLan(){
   loadLan().then(info=>{
@@ -1514,20 +1555,29 @@ function installSteps(){
       <li>Выберите <b>«Установить приложение»</b> или <b>«Добавить на главный экран»</b>, затем <b>«Установить»</b>.</li></ol>`;
 }
 function openInstall(){
-  if(installEvt){
+  if(installEvt&&!isAndroid){
     const e=installEvt;installEvt=null;
     e.prompt();e.userChoice.then(c=>{if(c.outcome!=='accepted')installEvt=e}).catch(()=>{});
     return;
   }
   const box=$('installContent');
+  const apkBtn=`<a class="big apk" href="/SprintGames.apk" download="SprintGames.apk">${ICO.dl}Скачать SprintGames.apk</a>`;
+  const apkSteps=`<ol class="steps">
+      <li>Нажмите <b>«Скачать SprintGames.apk»</b>.</li>
+      <li>Откройте скачанный файл (шторка уведомлений или «Загрузки»).</li>
+      <li>Если телефон спросит — разрешите установку из этого браузера, затем нажмите <b>«Установить»</b>.</li></ol>`;
   const head=`<div class="ihead"><img src="/icons/icon-192.png" alt="" onerror="this.style.display='none'"><div><div class="iname">SprintGames</div><div class="isub">4 мини-игры · с ботом и с друзьями</div></div></div>`;
-  if(isTouch){
+  if(isTouch&&isAndroid){
+    box.innerHTML=head+`<p>Настоящее приложение для Android: во весь экран, со своей иконкой, игра с ботом работает даже без сети.</p>`+apkBtn+apkSteps+
+      `<p class="note">Онлайн-игра с друзьями: приложение само найдёт сервер, если телефон в той же сети Wi-Fi или точке доступа.</p>`;
+    $('installBox').classList.remove('hidden');
+  }else if(isTouch){
     box.innerHTML=head+`<p>Приложение появится на главном экране телефона со своей иконкой:</p>`+installSteps()+
       `<p class="note">Онлайн-игра с друзьями работает, когда телефон подключён к той же сети, что и компьютер с сервером.</p>`;
     $('installBox').classList.remove('hidden');
   }else{
     box.innerHTML=head+`<p>Чтобы установить игру на телефон:</p><div class="lan" id="lanInstall"></div>`+
-      `<p><b>На Android</b> — после открытия страницы:</p>`+installSteps().replace('<b>Chrome</b>','<b>Chrome</b> на телефоне')+
+      `<p><b>На Android</b> — после открытия страницы нажмите в меню <b>«Скачать приложение»</b> и установите SprintGames.apk.</p>`+
       `<p><b>На iPhone</b> — откройте страницу в Safari, нажмите «Поделиться» ${ICO.share} и выберите «На экран Домой».</p>`;
     $('installBox').classList.remove('hidden');
     loadLan().then(info=>{
@@ -1539,11 +1589,20 @@ function openInstall(){
   }
 }
 function closeInstall(){$('installBox').classList.add('hidden')}
+window.appBack=function(){
+  if(!$('installBox').classList.contains('hidden')){closeInstall();return true}
+  if(state==='play'){setState('pause');return true}
+  if(state==='pause'){setState('play');return true}
+  if(state==='online'){setState('menu');return true}
+  if(state==='lobby'){netLeave();setState('online');return true}
+  if(state==='over'){if(Net.online){netLeave();setState('online')}else setState('menu');return true}
+  return false;
+};
 $('installBtn').innerHTML=ICO.dl+'Скачать приложение';
 $('installBtn').onclick=openInstall;
 $('installClose').onclick=closeInstall;
 $('installBox').addEventListener('pointerdown',e=>{if(e.target.id==='installBox')closeInstall()});
-if(isStandalone)$('installBtn').style.display='none';
+if(isStandalone||IN_APP)$('installBtn').style.display='none';
 
 setState('menu');
 requestAnimationFrame(loop);
