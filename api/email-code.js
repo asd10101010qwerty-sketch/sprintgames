@@ -10,7 +10,7 @@ const b64u = b => Buffer.from(b).toString('base64url');
 const sign = s => crypto.createHmac('sha256', 'sg-email-code:' + SECRET()).update(s).digest('base64url');
 const eq = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
-const CODE_TTL = 10 * 60, SESSION_TTL = 30 * 24 * 3600;
+const CODE_TTL = 15 * 60, SESSION_TTL = 30 * 24 * 3600;
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -35,7 +35,8 @@ const env = k => String(process.env[k] || '').trim().replace(/^[A-Z_]+\s*=\s*/, 
 // публичный ключ EmailJS не секретный (Account -> API keys -> Public Key)
 const EMAILJS_PUBLIC_KEY = 'a2Q8zBdk3etZILPf2';
 
-async function emailjs(to, code) {
+async function emailjs(to, code, exp) {
+  const until = new Date(exp * 1000).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit' });
   const r = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -44,7 +45,12 @@ async function emailjs(to, code) {
       template_id: 'template_3vx4uqc',
       user_id: EMAILJS_PUBLIC_KEY,
       accessToken: env('EMAILJS_PRIVATE_KEY'),
-      template_params: { to_email: to, email: to, code, subject: 'Код для входа в SprintGames' }
+      template_params: {
+        to_email: to, email: to, subject: 'Код для входа в SprintGames',
+        // имена под разные шаблоны EmailJS (в том числе готовый «One-Time Password»: {{passcode}} и {{time}})
+        code, passcode: code, otp: code, one_time_password: code,
+        time: until, company_name: 'SprintGames', name: 'SprintGames'
+      }
     })
   });
   if (!r.ok) throw new Error('EmailJS ' + r.status + ': ' + (await r.text()).slice(0, 200));
@@ -64,7 +70,7 @@ module.exports = async (req, res) => {
     const code = String(crypto.randomInt(0, 1e8)).padStart(8, '0');
     const exp = now + CODE_TTL;
     const body = b64u(JSON.stringify({ e: email, x: exp, h: sign('code:' + email + ':' + code + ':' + exp) }));
-    try { await emailjs(email, code); } catch (e) { return send(res, 502, { error: 'Не удалось отправить письмо: ' + e.message }); }
+    try { await emailjs(email, code, exp); } catch (e) { return send(res, 502, { error: 'Не удалось отправить письмо: ' + e.message }); }
     return send(res, 200, { ticket: body + '.' + sign('ticket:' + body), exp });
   }
 
