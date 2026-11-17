@@ -2002,7 +2002,7 @@ const jwtPayload=t=>{try{return JSON.parse(decodeURIComponent(escape(atob(t.spli
 const AUTH_ERR={invalid_credentials:'Неверная почта или пароль',email_not_confirmed:'Почта ещё не подтверждена — откройте письмо и нажмите ссылку',
   user_already_exists:'Такой аккаунт уже есть — нажмите «Войти»',email_exists:'Такой аккаунт уже есть — нажмите «Войти»',weak_password:'Слишком простой пароль: минимум 6 символов',
   over_email_send_rate_limit:'Слишком много писем — подождите минуту',over_request_rate_limit:'Слишком много попыток — подождите минуту',
-  mfa_verification_failed:'Неверный код — проверьте приложение-аутентификатор',email_address_invalid:'Неверный адрес почты',validation_failed:'Проверьте почту и пароль',
+  otp_expired:'Неверный или устаревший код — запросите новый',email_address_invalid:'Неверный адрес почты',validation_failed:'Проверьте почту и пароль',
   signup_disabled:'Регистрация отключена в настройках Supabase',provider_disabled:'Этот способ входа не включён в настройках Supabase'};
 async function sb(path,{method='GET',body,token}={}){
   let r;
@@ -2011,13 +2011,13 @@ async function sb(path,{method='GET',body,token}={}){
   let j=null;try{j=await r.json()}catch{}
   if(!r.ok){
     const c=j&&(j.error_code||j.code)||'',m=String(j&&(j.msg||j.message||j.error_description||j.error)||'');
-    const e=new Error(AUTH_ERR[c]||(/invalid login/i.test(m)?AUTH_ERR.invalid_credentials:/already registered/i.test(m)?AUTH_ERR.user_already_exists:/invalid totp|invalid code/i.test(m)?AUTH_ERR.mfa_verification_failed:(m||'Ошибка '+r.status)));
+    const e=new Error(AUTH_ERR[c]||(/invalid login/i.test(m)?AUTH_ERR.invalid_credentials:/already registered/i.test(m)?AUTH_ERR.user_already_exists:/expired|invalid.*(token|otp|code)/i.test(m)?AUTH_ERR.otp_expired:(m||'Ошибка '+r.status)));
     e.status=r.status;throw e;
   }
   return j;
 }
 const isEmailUser=u=>!(u&&u.app_metadata&&u.app_metadata.provider&&u.app_metadata.provider!=='email');
-function sessionOk(){return!!(Auth.s&&Auth.user&&(!isEmailUser(Auth.user)||jwtPayload(Auth.s.access_token).aal==='aal2'))}
+function sessionOk(){return!!(Auth.s&&Auth.user)}
 function accName(){const u=Auth.user||{},m=u.user_metadata||{};return String(m.full_name||m.name||(u.email||'Игрок').split('@')[0]).slice(0,12)}
 function saveSession(s){
   Auth.s={access_token:s.access_token,refresh_token:s.refresh_token,expires_at:s.expires_at||(Math.floor(Date.now()/1000)+(+s.expires_in||3600))};
@@ -2034,21 +2034,16 @@ function loggedIn(s){ // вход завершён
   $('authBox').classList.add('hidden');renderAcct();toast('Вы вошли как '+accName());
   const n=Auth.next;Auth.next=null;if(n)n();
 }
-// вход по почте засчитывается только после второго шага (код из приложения-аутентификатора)
-async function startMfa(s){
-  const tok=s.access_token,u=await sb('/user',{token:tok});
-  Auth.pending={access_token:tok,refresh_token:s.refresh_token,user:u};
-  const f=(u.factors||[]).find(x=>x.factor_type==='totp'&&x.status==='verified');
-  if(f){Auth.pending.factor=f.id;showAuth('mfa');return}
-  for(const x of u.factors||[])if(x.status!=='verified')await sb('/factors/'+x.id,{method:'DELETE',token:tok}).catch(()=>{});
-  const e=await sb('/factors',{method:'POST',token:tok,body:{factor_type:'totp',friendly_name:'SprintGames',issuer:'SprintGames'}});
-  Auth.pending.factor=e.id;Auth.pending.totp=e.totp;showAuth('enroll');
+// вход по почте: на почту приходит код, его вводят на сайте или в приложении (без пароля)
+async function sendCode(email){
+  const to=IN_APP?SITE:location.origin+location.pathname;
+  await sb('/otp?redirect_to='+encodeURIComponent(to),{method:'POST',body:{email,create_user:true}});
+  Auth.otp={email,sentAt:Date.now()};
 }
-async function verifyMfa(code){
-  const p=Auth.pending;if(!p)throw new Error('Начните вход заново');
-  const ch=await sb('/factors/'+p.factor+'/challenge',{method:'POST',token:p.access_token,body:{}});
-  const s=await sb('/factors/'+p.factor+'/verify',{method:'POST',token:p.access_token,body:{challenge_id:ch.id,code}});
-  loggedIn({...s,user:s.user||p.user});
+async function verifyCode(code){
+  const o=Auth.otp;if(!o)throw new Error('Сначала получите код');
+  const s=await sb('/verify',{method:'POST',body:{type:'email',email:o.email,token:code}});
+  Auth.otp=null;loggedIn(s);
 }
 
 const G_ICON='<svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.5z"/></svg>';
@@ -2062,22 +2057,37 @@ function showAuth(view,data){
   if(view==='main'){
     box.innerHTML=head('Вход')+`<p>Войдите, чтобы играть онлайн. Игра с ботом и на одном экране работает и без входа.</p>`+
       `<button class="gbtn" id="aGoogle">${G_ICON}Войти через Google</button><div class="or">или по почте</div>`+
-      `<div class="field"><label>Почта</label><input id="aEmail" type="email" autocomplete="email" placeholder="you@gmail.com"></div>`+
-      `<div class="field"><label>Пароль</label><input id="aPass" type="password" autocomplete="current-password" placeholder="минимум 6 символов"></div>`+
-      `<div class="arow"><button class="big" id="aLogin">Войти</button><button class="ghost" id="aSignup">Создать аккаунт</button></div>`+
+      `<div class="field"><label>Почта</label><input id="aEmail" type="email" autocomplete="email" placeholder="you@gmail.com" value="${esc(Auth.otp?Auth.otp.email:'')}"></div>`+
+      `<div class="arow"><button class="big" id="aSend">Получить код</button></div>`+
       `<div class="aerr" id="aErr"></div>`+
-      `<p class="note">Вход по почте защищён двухшаговой проверкой: понадобится приложение для кодов — Google Authenticator, Microsoft Authenticator или похожее.</p>`;
+      `<p class="note">Мы пришлём на почту код для входа. Пароль не нужен — аккаунт создастся сам при первом входе.</p>`;
     $('aGoogle').onclick=()=>{
       if(VIA_BROWSER)appGoogleLogin(); // приложение: вход в обычном браузере, результат вернётся сюда
       else location.href=SB_URL+'/auth/v1/authorize?provider=google&redirect_to='+encodeURIComponent(location.origin+location.pathname);
     };
-    const creds=()=>{const email=$('aEmail').value.trim(),password=$('aPass').value;if(!/^\S+@\S+\.\S+$/.test(email))throw new Error('Введите почту');if(password.length<6)throw new Error('Пароль — минимум 6 символов');return{email,password}};
-    $('aLogin').onclick=async()=>{const b=$('aLogin');aerr();try{const c=creds();busy(b,true);const s=await sb('/token?grant_type=password',{method:'POST',body:c});await startMfa(s)}catch(e){busy(b,false);aerr(e.message)}};
-    $('aSignup').onclick=async()=>{const b=$('aSignup');aerr();try{const c=creds();busy(b,true);
-      const r=await sb('/signup?redirect_to='+encodeURIComponent(IN_APP?'https://sprintgames.vercel.app/':location.origin+location.pathname),{method:'POST',body:c});
-      if(r&&r.access_token)await startMfa(r);else showAuth('sent',c.email)}catch(e){busy(b,false);aerr(e.message)}};
-    $('aPass').onkeydown=e=>{if(e.key==='Enter')$('aLogin').click()};
+    $('aSend').onclick=async()=>{const b=$('aSend'),email=$('aEmail').value.trim();aerr();
+      if(!/^\S+@\S+\.\S+$/.test(email))return aerr('Введите почту');
+      busy(b,true,'Отправляем...');try{await sendCode(email);showAuth('code')}catch(e){busy(b,false);aerr(e.message)}};
+    $('aEmail').onkeydown=e=>{if(e.key==='Enter')$('aSend').click()};
     setTimeout(()=>$('aEmail').focus(),50);
+  }else if(view==='code'){
+    box.innerHTML=head('Код из почты')+`<p>Мы отправили код на <b>${esc(Auth.otp.email)}</b>. Откройте письмо и введите код здесь.</p>`+
+      `<input id="aCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="000000">`+
+      `<div class="arow"><button class="big" id="aVerify">Войти</button></div><div class="aerr" id="aErr"></div>`+
+      `<div class="arow"><button class="ghost sm" id="aResend">Отправить код ещё раз</button><button class="ghost sm" id="aOther">Другая почта</button></div>`+
+      `<p class="note">Письма нет? Проверьте папку «Спам» и вкладку «Промоакции».</p>`;
+    const go=async()=>{const b=$('aVerify'),code=$('aCode').value.replace(/\D/g,'');aerr();
+      if(code.length<6)return aerr('Введите код из письма');
+      busy(b,true);try{await verifyCode(code)}catch(e){busy(b,false);aerr(e.message);$('aCode').select()}};
+    $('aVerify').onclick=go;
+    $('aCode').oninput=()=>{$('aCode').value=$('aCode').value.replace(/\D/g,'').slice(0,10)};
+    $('aCode').onkeydown=e=>{if(e.key==='Enter')go()};
+    $('aOther').onclick=()=>{Auth.otp=null;showAuth('main')};
+    const rs=$('aResend'),tick=()=>{if(!$('aResend')||!Auth.otp)return;const left=60-Math.floor((Date.now()-Auth.otp.sentAt)/1000);
+      if(left>0){rs.disabled=true;rs.textContent='Отправить ещё раз через '+left+' с';setTimeout(tick,1000)}else{rs.disabled=false;rs.textContent='Отправить код ещё раз'}};
+    tick();
+    rs.onclick=async()=>{aerr();busy(rs,true,'Отправляем...');try{await sendCode(Auth.otp.email);rs.dataset.t='';tick();toast('Код отправлен ещё раз')}catch(e){busy(rs,false);aerr(e.message)}};
+    setTimeout(()=>$('aCode').focus(),50);
   }else if(view==='appwait'){
     box.innerHTML=head('Вход через Google')+`<p>Мы открыли браузер. Войдите там через Google — после этого вход появится здесь сам.</p>`+
       `<div class="await"><span class="spin"></span>Ждём вход из браузера...</div>`+
@@ -2088,36 +2098,9 @@ function showAuth(view,data){
     box.innerHTML=head(data.ok?'Готово':'Не получилось')+(data.ok?
       `<p>Вход выполнен. <b>Вернитесь в приложение SprintGames</b> — вы уже вошли.</p><p class="note">Эту вкладку браузера можно закрыть.</p>`:
       `<p>${esc(data.msg||'Не удалось войти')}</p><p class="note">Вернитесь в приложение и попробуйте ещё раз.</p>`);
-  }else if(view==='sent'){
-    box.innerHTML=head('Подтвердите почту')+`<p>Мы отправили письмо на <b>${esc(data)}</b>.</p><ol class="steps"><li>Откройте письмо и нажмите ссылку подтверждения.</li><li>Вернитесь сюда и нажмите <b>«Войти»</b> с той же почтой и паролем.</li><li>Настройте двухшаговую проверку — это займёт минуту.</li></ol><p class="note">Письма нет? Проверьте папку «Спам».</p><div class="arow"><button class="big" id="aBack">Войти</button></div>`;
-    $('aBack').onclick=()=>showAuth('main');
-  }else if(view==='enroll'){
-    const t=Auth.pending.totp||{},uri=t.uri||'',secret=t.secret||'';
-    box.innerHTML=head('Двухшаговая проверка')+`<p>Для входа по почте нужен второй шаг — код из приложения на телефоне.</p>`+
-      `<ol class="steps"><li>Установите <b>Google Authenticator</b> (или другое приложение для кодов).</li>`+
-      `<li>В приложении нажмите «+» и отсканируйте код${isTouch?' или нажмите кнопку ниже':''}:</li></ol>`+
-      `<div class="totp"><div class="qr">${uri?QR.svg(uri):''}</div><div><div class="note">Или введите ключ вручную:</div><div class="secret">${esc(secret.replace(/(.{4})/g,'$1 ').trim())}</div>`+
-      (isTouch&&!IN_APP&&uri?`<a class="ghost sm alink" href="${esc(uri)}">Добавить в приложение</a>`:'')+`</div></div>`+
-      `<ol class="steps" start="3"><li>Введите 6-значный код из приложения:</li></ol>`+
-      `<input id="aCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">`+
-      `<div class="arow"><button class="big" id="aVerify">Подтвердить</button></div><div class="aerr" id="aErr"></div>`;
-    bindCode();
-  }else if(view==='mfa'){
-    box.innerHTML=head('Код подтверждения')+`<p>Откройте приложение-аутентификатор и введите 6-значный код для <b>SprintGames</b>.</p>`+
-      `<input id="aCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">`+
-      `<div class="arow"><button class="big" id="aVerify">Войти</button></div><div class="aerr" id="aErr"></div>`;
-    bindCode();
   }
 }
-function bindCode(){
-  const go=async()=>{const b=$('aVerify'),code=$('aCode').value.replace(/\D/g,'');aerr();
-    if(code.length!==6)return aerr('Введите 6 цифр');
-    busy(b,true);try{await verifyMfa(code)}catch(e){busy(b,false);aerr(e.message);$('aCode').select()}};
-  $('aVerify').onclick=go;
-  $('aCode').oninput=()=>{const v=$('aCode').value.replace(/\D/g,'').slice(0,6);$('aCode').value=v;if(v.length===6)go()};
-  setTimeout(()=>$('aCode').focus(),50);
-}
-function closeAuth(){$('authBox').classList.add('hidden');Auth.next=null;Auth.appWait=null;if(Auth.pending&&!sessionOk())Auth.pending=null}
+function closeAuth(){$('authBox').classList.add('hidden');Auth.next=null;Auth.appWait=null}
 
 /* Вход через Google из приложения (и с иконки на iPhone): Google не пускает во встроенные окна,
    поэтому вход идёт в обычном браузере, а сайт передаёт его обратно через тот же канал, что и онлайн.
@@ -2209,8 +2192,7 @@ async function authInit(){
     else try{
       const at=h.get('access_token'),s={access_token:at,refresh_token:h.get('refresh_token'),expires_in:+h.get('expires_in')||3600};
       s.user=await sb('/user',{token:at});
-      if(isEmailUser(s.user)&&jwtPayload(at).aal!=='aal2'){$('authBox').classList.remove('hidden');await startMfa(s)} // письмо подтверждено — дальше второй шаг
-      else loggedIn(s);
+      loggedIn(s);
     }catch(e){toast(e.message)}
   }else{
     try{
@@ -2227,7 +2209,7 @@ $('authClose').onclick=closeAuth;
 $('authBox').addEventListener('pointerdown',e=>{if(e.target.id==='authBox')closeAuth()});
 // онлайн — только после входа (если аккаунты подключены)
 $('onlineBtn').onclick=()=>{if(SB_KEY&&!sessionOk()){Auth.next=()=>setState('online');showAuth('main')}else setState('online')};
-authInit();
+// authInit() запускается после модуля админки (ниже), чтобы isAdmin() был готов
 
 
 /* ---------- Админка: скины и читы (только для аккаунта администратора) ---------- */
@@ -2327,7 +2309,7 @@ $('adminClose').onclick=closeAdmin;
 $('adminBox').addEventListener('pointerdown',e=>{if(e.target.id==='adminBox')closeAdmin()});
 $('admPauseBtn').onclick=openAdmin;
 addEventListener('keydown',e=>{if(e.code==='F2'&&isAdmin()){e.preventDefault();$('adminBox').classList.contains('hidden')?openAdmin():closeAdmin()}});
-renderAcct();
+authInit();
 
 setState('menu');
 requestAnimationFrame(loop);
