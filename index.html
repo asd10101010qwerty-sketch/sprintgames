@@ -1131,7 +1131,10 @@ const crownSvg='<svg viewBox="0 0 24 24" fill="#ffd166"><path d="M3 8l4.5 4L12 5
 let maxSel=2,createGame=gi;
 $('nick').value=localStorage.getItem('nick')||('Игрок'+(100+ri(900)));
 $('nick').oninput=()=>localStorage.setItem('nick',$('nick').value);
-$('addr').value=IN_APP?(localStorage.getItem('serverAddr')||''):location.protocol.startsWith('http')?location.host:(localStorage.getItem('serverAddr')||'localhost:3000');
+// Сайт на Vercel не может держать игровой сервер, поэтому там онлайн идёт через сервер в интернете (Render)
+const INTERNET_SERVER='sprintgames-server.onrender.com';
+const ON_VERCEL=/\.vercel\.app$/i.test(location.hostname);
+$('addr').value=IN_APP?(localStorage.getItem('serverAddr')||''):ON_VERCEL?(localStorage.getItem('serverAddr')||INTERNET_SERVER):location.protocol.startsWith('http')?location.host:(localStorage.getItem('serverAddr')||'localhost:3000');
 $('addr').onchange=()=>{localStorage.setItem('serverAddr',$('addr').value.trim());netConnect().then(()=>netSend({t:'list'})).catch(()=>{})};
 const nick=()=>($('nick').value.trim()||'Игрок').slice(0,12);
 
@@ -1146,7 +1149,7 @@ function netConnect(){
   const addr=$('addr').value.trim();
   if(Net.ws&&Net.addr===addr&&Net.ws.readyState<=1)return Net.ready;
   if(Net.ws){const old=Net.ws;Net.ws=null;old.close()}
-  setStatus(false,'подключение...');
+  setStatus(false,addr===INTERNET_SERVER?'подключение... (сервер может просыпаться до минуты)':'подключение...');
   let ws;
   try{ws=new WebSocket(wsUrl(addr))}catch(e){setStatus(false,'неверный адрес');return Promise.reject(e)}
   Net.ws=ws;Net.addr=addr;
@@ -1203,6 +1206,10 @@ function enterOnline(){
       if(!a){renderRooms(null);setStatus(false,'сервер не найден');return}
       $('addr').value=a;localStorage.setItem('serverAddr',a);lanInfo=null;return go();
     })).catch(()=>{});
+  }else if(ON_VERCEL&&$('addr').value.trim()===INTERNET_SERVER&&!(Net.ws&&Net.ws.readyState===1)){
+    // бесплатный сервер засыпает: сначала будим его обычным запросом, потом подключаемся
+    setStatus(false,'подключение... (сервер может просыпаться до минуты)');
+    fetch('https://'+INTERNET_SERVER+'/health',{cache:'no-store'}).catch(()=>{}).then(()=>go()).catch(()=>{});
   }else go().catch(()=>{});
   if(!Net.listT)Net.listT=setInterval(()=>{if(state==='online')netSend({t:'list'})},2000);
 }
