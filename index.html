@@ -150,6 +150,26 @@ button.dlb{display:inline-flex;align-items:center;gap:8px}
 button.dlb svg{width:18px;height:18px}
 .modal{position:fixed;inset:0;z-index:40;background:rgba(5,7,11,.75);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px}
 .modal.hidden{display:none}
+#acct{position:absolute;top:12px;right:14px;display:flex;gap:8px;align-items:center;font-size:13px;color:#c9d1dd;z-index:2}
+#acct svg{width:16px;height:16px;vertical-align:-3px;margin-right:6px}
+#acct .aname{display:flex;align-items:center;font-weight:600}
+#acct button{display:flex;align-items:center}
+.aico{width:52px;height:52px;border-radius:14px;background:#221f15;color:#ffd166;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.aico svg{width:28px;height:28px}
+.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin:12px 0 4px;padding:11px;border-radius:12px;border:0;background:#fff;color:#1f1f1f;font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+.gbtn svg{width:20px;height:20px}
+.or{display:flex;align-items:center;gap:10px;color:#6f7a8b;font-size:12px;margin:12px 0}
+.or:before,.or:after{content:'';flex:1;height:1px;background:#2a3343}
+.mbox .field{margin:8px 0}
+.arow{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.arow button{flex:1;font-size:16px;padding:10px 14px}
+.aerr{color:#ff7b7b;font-size:13px;min-height:18px;margin-top:8px}
+.totp{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:6px 0}
+.totp .qr{width:156px;flex-shrink:0;background:#fff;border-radius:10px;padding:6px}
+.totp .qr svg{display:block;width:100%;height:auto}
+.secret{font-family:ui-monospace,Consolas,monospace;font-size:14px;color:#fff;word-break:break-all;margin:4px 0 10px;user-select:all}
+a.alink{display:inline-block;text-decoration:none;color:#e6e9ef;border:1px solid #36404f;border-radius:9px;padding:6px 12px}
+input.code{font-family:ui-monospace,Consolas,monospace;letter-spacing:.35em;font-size:22px;text-align:center;max-width:220px;display:block;margin:6px auto 0}
 .mbox{position:relative;background:#141a24;border:1px solid #2a3343;border-radius:18px;padding:22px 24px;max-width:520px;width:100%;max-height:100%;overflow:auto;text-align:left;font-size:14px;color:#c9d1dd;line-height:1.55;box-shadow:0 20px 60px rgba(0,0,0,.6)}
 .mbox p{margin:10px 0}
 .mx{position:absolute;top:10px;right:10px;width:34px;height:34px;border-radius:9px;border:1px solid #36404f;background:transparent;color:#aab3c2;cursor:pointer;display:flex;align-items:center;justify-content:center}
@@ -173,6 +193,7 @@ a.big.apk svg{width:20px;height:20px}
     <canvas id="c"></canvas>
 
     <div class="overlay" id="menu">
+      <div id="acct"></div>
       <h1>SPRINTGAMES</h1>
       <div class="games" id="games"></div>
       <p class="sub" id="desc"></p>
@@ -232,6 +253,7 @@ a.big.apk svg{width:20px;height:20px}
 </div>
 
 <div id="installBox" class="modal hidden"><div class="mbox"><button class="mx" id="installClose" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button><div id="installContent"></div></div></div>
+<div id="authBox" class="modal hidden"><div class="mbox"><button class="mx" id="authClose" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button><div id="authContent"></div></div></div>
 <div id="touch" class="hidden">
   <div id="tzL"></div><div id="tzR"></div>
   <div id="stick"><div id="knob"></div></div>
@@ -1925,6 +1947,159 @@ if(installed){
   $('installBtn').onclick=openInstall;
 }
 if(sessionStorage.getItem('sgUpdated')){sessionStorage.removeItem('sgUpdated');setTimeout(()=>toast('Готово — у вас последняя версия'),300)}
+
+
+/* ---------- Аккаунты: Supabase Auth (Google или почта + обязательная двухшаговая проверка) ---------- */
+const SB_URL='https://keinvddvlpfbbtasmcpc.supabase.co';
+const SB_KEY=''; // publishable (anon) key проекта — публичный, его можно хранить в коде сайта
+const Auth={s:null,user:null,pending:null,next:null};
+const jwtPayload=t=>{try{return JSON.parse(decodeURIComponent(escape(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')))))}catch{return{}}};
+const AUTH_ERR={invalid_credentials:'Неверная почта или пароль',email_not_confirmed:'Почта ещё не подтверждена — откройте письмо и нажмите ссылку',
+  user_already_exists:'Такой аккаунт уже есть — нажмите «Войти»',email_exists:'Такой аккаунт уже есть — нажмите «Войти»',weak_password:'Слишком простой пароль: минимум 6 символов',
+  over_email_send_rate_limit:'Слишком много писем — подождите минуту',over_request_rate_limit:'Слишком много попыток — подождите минуту',
+  mfa_verification_failed:'Неверный код — проверьте приложение-аутентификатор',email_address_invalid:'Неверный адрес почты',validation_failed:'Проверьте почту и пароль',
+  signup_disabled:'Регистрация отключена в настройках Supabase',provider_disabled:'Этот способ входа не включён в настройках Supabase'};
+async function sb(path,{method='GET',body,token}={}){
+  let r;
+  try{r=await fetch(SB_URL+'/auth/v1'+path,{method,headers:{apikey:SB_KEY,'Content-Type':'application/json',Authorization:'Bearer '+(token||SB_KEY)},body:body?JSON.stringify(body):undefined})}
+  catch{throw new Error('Нет интернета')}
+  let j=null;try{j=await r.json()}catch{}
+  if(!r.ok){
+    const c=j&&(j.error_code||j.code)||'',m=String(j&&(j.msg||j.message||j.error_description||j.error)||'');
+    const e=new Error(AUTH_ERR[c]||(/invalid login/i.test(m)?AUTH_ERR.invalid_credentials:/already registered/i.test(m)?AUTH_ERR.user_already_exists:/invalid totp|invalid code/i.test(m)?AUTH_ERR.mfa_verification_failed:(m||'Ошибка '+r.status)));
+    e.status=r.status;throw e;
+  }
+  return j;
+}
+const isEmailUser=u=>!(u&&u.app_metadata&&u.app_metadata.provider&&u.app_metadata.provider!=='email');
+function sessionOk(){return!!(Auth.s&&Auth.user&&(!isEmailUser(Auth.user)||jwtPayload(Auth.s.access_token).aal==='aal2'))}
+function accName(){const u=Auth.user||{},m=u.user_metadata||{};return String(m.full_name||m.name||(u.email||'Игрок').split('@')[0]).slice(0,12)}
+function saveSession(s){
+  Auth.s={access_token:s.access_token,refresh_token:s.refresh_token,expires_at:s.expires_at||(Math.floor(Date.now()/1000)+(+s.expires_in||3600))};
+  if(s.user)Auth.user=s.user;
+  localStorage.setItem('sgAuth',JSON.stringify({...Auth.s,user:Auth.user}));
+}
+function clearSession(){Auth.s=null;Auth.user=null;Auth.pending=null;localStorage.removeItem('sgAuth');renderAcct()}
+async function refreshSession(){saveSession(await sb('/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:Auth.s.refresh_token}}))}
+setInterval(()=>{if(Auth.s&&Auth.s.expires_at-Date.now()/1000<300)refreshSession().catch(e=>{if(e.status&&e.status<500)clearSession()})},60000);
+
+function loggedIn(s){ // вход завершён
+  saveSession(s);Auth.pending=null;
+  $('nick').value=accName();localStorage.setItem('nick',$('nick').value);
+  $('authBox').classList.add('hidden');renderAcct();toast('Вы вошли как '+accName());
+  const n=Auth.next;Auth.next=null;if(n)n();
+}
+// вход по почте засчитывается только после второго шага (код из приложения-аутентификатора)
+async function startMfa(s){
+  const tok=s.access_token,u=await sb('/user',{token:tok});
+  Auth.pending={access_token:tok,refresh_token:s.refresh_token,user:u};
+  const f=(u.factors||[]).find(x=>x.factor_type==='totp'&&x.status==='verified');
+  if(f){Auth.pending.factor=f.id;showAuth('mfa');return}
+  for(const x of u.factors||[])if(x.status!=='verified')await sb('/factors/'+x.id,{method:'DELETE',token:tok}).catch(()=>{});
+  const e=await sb('/factors',{method:'POST',token:tok,body:{factor_type:'totp',friendly_name:'SprintGames',issuer:'SprintGames'}});
+  Auth.pending.factor=e.id;Auth.pending.totp=e.totp;showAuth('enroll');
+}
+async function verifyMfa(code){
+  const p=Auth.pending;if(!p)throw new Error('Начните вход заново');
+  const ch=await sb('/factors/'+p.factor+'/challenge',{method:'POST',token:p.access_token,body:{}});
+  const s=await sb('/factors/'+p.factor+'/verify',{method:'POST',token:p.access_token,body:{challenge_id:ch.id,code}});
+  loggedIn({...s,user:s.user||p.user});
+}
+
+const G_ICON='<svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.5z"/></svg>';
+const USER_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
+const SHIELD_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>';
+function busy(btn,on,txt){if(!btn)return;btn.disabled=on;if(on){btn.dataset.t=btn.innerHTML;btn.innerHTML=txt||'Подождите...'}else if(btn.dataset.t)btn.innerHTML=btn.dataset.t}
+function aerr(t){const e=$('aErr');if(e)e.textContent=t||''}
+function showAuth(view,data){
+  const box=$('authContent');$('authBox').classList.remove('hidden');
+  const head=t=>`<div class="ihead"><div class="aico">${SHIELD_ICON}</div><div><div class="iname">${t}</div><div class="isub">SprintGames</div></div></div>`;
+  if(view==='main'){
+    box.innerHTML=head('Вход')+`<p>Войдите, чтобы играть онлайн. Игра с ботом и на одном экране работает и без входа.</p>`+
+      (IN_APP?`<p class="note">Вход через Google — на сайте sprintgames.vercel.app. В приложении войдите по почте.</p>`:
+       `<button class="gbtn" id="aGoogle">${G_ICON}Войти через Google</button><div class="or">или по почте</div>`)+
+      `<div class="field"><label>Почта</label><input id="aEmail" type="email" autocomplete="email" placeholder="you@gmail.com"></div>`+
+      `<div class="field"><label>Пароль</label><input id="aPass" type="password" autocomplete="current-password" placeholder="минимум 6 символов"></div>`+
+      `<div class="arow"><button class="big" id="aLogin">Войти</button><button class="ghost" id="aSignup">Создать аккаунт</button></div>`+
+      `<div class="aerr" id="aErr"></div>`+
+      `<p class="note">Вход по почте защищён двухшаговой проверкой: понадобится приложение для кодов — Google Authenticator, Microsoft Authenticator или похожее.</p>`;
+    if($('aGoogle'))$('aGoogle').onclick=()=>{location.href=SB_URL+'/auth/v1/authorize?provider=google&redirect_to='+encodeURIComponent(location.origin+location.pathname)};
+    const creds=()=>{const email=$('aEmail').value.trim(),password=$('aPass').value;if(!/^\S+@\S+\.\S+$/.test(email))throw new Error('Введите почту');if(password.length<6)throw new Error('Пароль — минимум 6 символов');return{email,password}};
+    $('aLogin').onclick=async()=>{const b=$('aLogin');aerr();try{const c=creds();busy(b,true);const s=await sb('/token?grant_type=password',{method:'POST',body:c});await startMfa(s)}catch(e){busy(b,false);aerr(e.message)}};
+    $('aSignup').onclick=async()=>{const b=$('aSignup');aerr();try{const c=creds();busy(b,true);
+      const r=await sb('/signup?redirect_to='+encodeURIComponent(IN_APP?'https://sprintgames.vercel.app/':location.origin+location.pathname),{method:'POST',body:c});
+      if(r&&r.access_token)await startMfa(r);else showAuth('sent',c.email)}catch(e){busy(b,false);aerr(e.message)}};
+    $('aPass').onkeydown=e=>{if(e.key==='Enter')$('aLogin').click()};
+    setTimeout(()=>$('aEmail').focus(),50);
+  }else if(view==='sent'){
+    box.innerHTML=head('Подтвердите почту')+`<p>Мы отправили письмо на <b>${esc(data)}</b>.</p><ol class="steps"><li>Откройте письмо и нажмите ссылку подтверждения.</li><li>Вернитесь сюда и нажмите <b>«Войти»</b> с той же почтой и паролем.</li><li>Настройте двухшаговую проверку — это займёт минуту.</li></ol><p class="note">Письма нет? Проверьте папку «Спам».</p><div class="arow"><button class="big" id="aBack">Войти</button></div>`;
+    $('aBack').onclick=()=>showAuth('main');
+  }else if(view==='enroll'){
+    const t=Auth.pending.totp||{},uri=t.uri||'',secret=t.secret||'';
+    box.innerHTML=head('Двухшаговая проверка')+`<p>Для входа по почте нужен второй шаг — код из приложения на телефоне.</p>`+
+      `<ol class="steps"><li>Установите <b>Google Authenticator</b> (или другое приложение для кодов).</li>`+
+      `<li>В приложении нажмите «+» и отсканируйте код${isTouch?' или нажмите кнопку ниже':''}:</li></ol>`+
+      `<div class="totp"><div class="qr">${uri?QR.svg(uri):''}</div><div><div class="note">Или введите ключ вручную:</div><div class="secret">${esc(secret.replace(/(.{4})/g,'$1 ').trim())}</div>`+
+      (isTouch&&!IN_APP&&uri?`<a class="ghost sm alink" href="${esc(uri)}">Добавить в приложение</a>`:'')+`</div></div>`+
+      `<ol class="steps" start="3"><li>Введите 6-значный код из приложения:</li></ol>`+
+      `<input id="aCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">`+
+      `<div class="arow"><button class="big" id="aVerify">Подтвердить</button></div><div class="aerr" id="aErr"></div>`;
+    bindCode();
+  }else if(view==='mfa'){
+    box.innerHTML=head('Код подтверждения')+`<p>Откройте приложение-аутентификатор и введите 6-значный код для <b>SprintGames</b>.</p>`+
+      `<input id="aCode" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">`+
+      `<div class="arow"><button class="big" id="aVerify">Войти</button></div><div class="aerr" id="aErr"></div>`;
+    bindCode();
+  }
+}
+function bindCode(){
+  const go=async()=>{const b=$('aVerify'),code=$('aCode').value.replace(/\D/g,'');aerr();
+    if(code.length!==6)return aerr('Введите 6 цифр');
+    busy(b,true);try{await verifyMfa(code)}catch(e){busy(b,false);aerr(e.message);$('aCode').select()}};
+  $('aVerify').onclick=go;
+  $('aCode').oninput=()=>{const v=$('aCode').value.replace(/\D/g,'').slice(0,6);$('aCode').value=v;if(v.length===6)go()};
+  setTimeout(()=>$('aCode').focus(),50);
+}
+function closeAuth(){$('authBox').classList.add('hidden');Auth.next=null;if(Auth.pending&&!sessionOk())Auth.pending=null}
+function renderAcct(){
+  const el=$('acct');if(!el)return;
+  if(!SB_KEY){el.innerHTML='';return}
+  if(sessionOk()){
+    el.innerHTML=`<span class="aname">${USER_ICON}${esc(accName())}</span><button class="ghost sm" id="aOut">Выйти</button>`;
+    $('aOut').onclick=async()=>{const t=Auth.s&&Auth.s.access_token;clearSession();if(t)sb('/logout',{method:'POST',token:t}).catch(()=>{});toast('Вы вышли из аккаунта')};
+  }else{
+    el.innerHTML=`<button class="ghost sm" id="aIn">${USER_ICON}Войти</button>`;
+    $('aIn').onclick=()=>showAuth('main');
+  }
+}
+async function authInit(){
+  if(!SB_KEY){renderAcct();return}
+  const h=new URLSearchParams(location.hash.slice(1));
+  if(h.get('access_token')||h.get('error_description')){
+    history.replaceState(null,'',location.pathname+location.search); // убрать токены из адреса
+    if(h.get('error_description'))toast('Не удалось войти: '+h.get('error_description'));
+    else try{
+      const at=h.get('access_token'),s={access_token:at,refresh_token:h.get('refresh_token'),expires_in:+h.get('expires_in')||3600};
+      s.user=await sb('/user',{token:at});
+      if(isEmailUser(s.user)&&jwtPayload(at).aal!=='aal2'){$('authBox').classList.remove('hidden');await startMfa(s)} // письмо подтверждено — дальше второй шаг
+      else loggedIn(s);
+    }catch(e){toast(e.message)}
+  }else{
+    try{
+      const d=JSON.parse(localStorage.getItem('sgAuth')||'null');
+      if(d&&d.refresh_token){Auth.s={access_token:d.access_token,refresh_token:d.refresh_token,expires_at:d.expires_at};Auth.user=d.user;
+        if(Auth.s.expires_at-Date.now()/1000<300)await refreshSession()}
+    }catch(e){if(!e.status||e.status<500)clearSession()}
+    if(Auth.s&&!sessionOk())clearSession();
+    if(sessionOk()){$('nick').value=accName()}
+  }
+  renderAcct();
+}
+$('authClose').onclick=closeAuth;
+$('authBox').addEventListener('pointerdown',e=>{if(e.target.id==='authBox')closeAuth()});
+// онлайн — только после входа (если аккаунты подключены)
+$('onlineBtn').onclick=()=>{if(SB_KEY&&!sessionOk()){Auth.next=()=>setState('online');showAuth('main')}else setState('online')};
+authInit();
 
 setState('menu');
 requestAnimationFrame(loop);
