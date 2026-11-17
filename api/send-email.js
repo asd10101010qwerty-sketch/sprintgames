@@ -40,6 +40,7 @@ const SUBJECT = {
   reauthentication: 'Код подтверждения SprintGames'
 };
 
+const hookError = (res, message) => { res.statusCode = 200; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: { http_code: 500, message } })); };
 const fail = (res, code, message) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ error: { http_code: code, message } })); };
 
 module.exports = async (req, res) => {
@@ -64,10 +65,10 @@ module.exports = async (req, res) => {
         template_params: { to_email: email, email, code, subject: SUBJECT[d.email_action_type] || SUBJECT.magiclink }
       })
     });
-    // 400 — чтобы Supabase показал причину отказа EmailJS, а не «unexpected status»
-    if (!r.ok) return fail(res, 400, 'EmailJS ' + r.status + ': ' + (await r.text()).slice(0, 200));
+    // статус 200 с объектом error — так Supabase передаёт текст ошибки игроку, а не «unexpected status»
+    if (!r.ok) return hookError(res, 'EmailJS ' + r.status + ': ' + (await r.text()).slice(0, 200));
   } catch (e) {
-    return fail(res, 400, 'EmailJS недоступен: ' + (e && e.message));
+    return hookError(res, 'EmailJS недоступен: ' + (e && e.message));
   }
   res.statusCode = 200;
   res.setHeader('Content-Type', 'application/json');
