@@ -41,7 +41,7 @@ async function emailjs(to, code) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       service_id: 'service_wlyob34',
-      template_id: env('EMAILJS_TEMPLATE_ID'),
+      template_id: 'template_3vx4uqc',
       user_id: EMAILJS_PUBLIC_KEY,
       accessToken: env('EMAILJS_PRIVATE_KEY'),
       template_params: { to_email: to, email: to, code, subject: 'Код для входа в SprintGames' }
