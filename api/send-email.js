@@ -64,9 +64,10 @@ module.exports = async (req, res) => {
         template_params: { to_email: email, email, code, subject: SUBJECT[d.email_action_type] || SUBJECT.magiclink }
       })
     });
-    if (!r.ok) return fail(res, 502, 'EmailJS: ' + (await r.text()).slice(0, 200));
+    // 400 — чтобы Supabase показал причину отказа EmailJS, а не «unexpected status»
+    if (!r.ok) return fail(res, 400, 'EmailJS ' + r.status + ': ' + (await r.text()).slice(0, 200));
   } catch (e) {
-    return fail(res, 502, 'EmailJS недоступен');
+    return fail(res, 400, 'EmailJS недоступен: ' + (e && e.message));
   }
   res.statusCode = 200;
   res.setHeader('Content-Type', 'application/json');
