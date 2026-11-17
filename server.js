@@ -8,6 +8,16 @@ const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 3000;
 const INDEX = path.join(__dirname, 'index.html');
+// файлы приложения SprintGames (только этот список, другие файлы папки не отдаются)
+const STATIC = {
+  '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
+  '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],
+  '/icons/icon-192.png': ['icons/icon-192.png', 'image/png'],
+  '/icons/icon-512.png': ['icons/icon-512.png', 'image/png'],
+  '/icons/apple-touch-icon.png': ['icons/apple-touch-icon.png', 'image/png'],
+  '/icons/favicon-64.png': ['icons/favicon-64.png', 'image/png'],
+  '/favicon.ico': ['icons/favicon-64.png', 'image/png']
+};
 
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
@@ -20,6 +30,13 @@ const server = http.createServer((req, res) => {
   } else if (url === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('ok');
+  } else if (STATIC[url]) {
+    const [file, type] = STATIC[url];
+    fs.readFile(path.join(__dirname, file), (err, data) => {
+      if (err) { res.writeHead(404); return res.end(); }
+      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-cache' });
+      res.end(data);
+    });
   } else if (url === '/info') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
     res.end(JSON.stringify({ port: Number(PORT), ips: lanIps() }));

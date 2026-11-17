@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0b0e14">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Арена на четверых</title>
+<title>SprintGames</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/icons/favicon-64.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="application-name" content="SprintGames">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SprintGames">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:radial-gradient(circle at 50% 0%,#1a2130,#0b0e14 70%);color:#e6e9ef;font-family:"Segoe UI",system-ui,sans-serif;height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden;user-select:none}
@@ -135,6 +142,22 @@ canvas{touch-action:none}
   .lan .qr svg{width:84px;height:84px}
   body{align-items:flex-start;padding-top:4px}
 }
+button.dlb{display:inline-flex;align-items:center;gap:8px}
+button.dlb svg{width:18px;height:18px}
+.modal{position:fixed;inset:0;z-index:40;background:rgba(5,7,11,.75);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:16px}
+.modal.hidden{display:none}
+.mbox{position:relative;background:#141a24;border:1px solid #2a3343;border-radius:18px;padding:22px 24px;max-width:520px;width:100%;max-height:100%;overflow:auto;text-align:left;font-size:14px;color:#c9d1dd;line-height:1.55;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.mbox p{margin:10px 0}
+.mx{position:absolute;top:10px;right:10px;width:34px;height:34px;border-radius:9px;border:1px solid #36404f;background:transparent;color:#aab3c2;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.mx svg{width:16px;height:16px}
+.ihead{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+.ihead img{width:64px;height:64px;border-radius:16px}
+.iname{font-size:22px;font-weight:900;color:#fff}
+.isub{font-size:13px;color:#8a94a5}
+.steps{margin:8px 0 8px 20px;display:flex;flex-direction:column;gap:8px}
+.steps b{color:#fff}
+.ii{width:18px;height:18px;vertical-align:-4px;color:#ffd166}
+.note{font-size:12px;color:#7d8798}
 </style>
 </head>
 <body>
@@ -144,13 +167,13 @@ canvas{touch-action:none}
     <canvas id="c"></canvas>
 
     <div class="overlay" id="menu">
-      <h1>АРЕНА НА ЧЕТВЕРЫХ</h1>
+      <h1>SPRINTGAMES</h1>
       <div class="games" id="games"></div>
       <p class="sub" id="desc"></p>
       <div class="modes" id="modes"></div>
       <div class="cols" id="cards"></div>
       <div id="extra"></div>
-      <div class="btns"><button class="big" id="startBtn">Начать игру</button><button class="ghost" id="onlineBtn">Играть онлайн</button></div>
+      <div class="btns"><button class="big" id="startBtn">Начать игру</button><button class="ghost" id="onlineBtn">Играть онлайн</button><button class="ghost dlb" id="installBtn">Скачать приложение</button></div>
       <div class="hint">Игра: <kbd>&larr;</kbd><kbd>&rarr;</kbd> &middot; игроки: <kbd>1</kbd>–<kbd>4</kbd> &middot; старт: <kbd>Пробел</kbd> / <kbd>Enter</kbd></div>
     </div>
 
@@ -201,6 +224,7 @@ canvas{touch-action:none}
   </div>
 </div>
 
+<div id="installBox" class="modal hidden"><div class="mbox"><button class="mx" id="installClose" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button><div id="installContent"></div></div></div>
 <div id="touch" class="hidden">
   <div id="stick"><div id="knob"></div></div>
   <div id="actBtn"><span id="actLbl">Огонь</span></div>
@@ -253,6 +277,7 @@ const held=list=>list.some(k=>keys.has(k));
 addEventListener('pointerdown',()=>{ac();if(actx.state==='suspended')actx.resume()});
 addEventListener('keydown',e=>{
   ac();if(actx.state==='suspended')actx.resume();
+  if(!document.getElementById('installBox').classList.contains('hidden')){if(e.code==='Escape')closeInstall();return}
   if(e.target&&e.target.tagName==='INPUT'){if(e.code==='Enter'||e.code==='NumpadEnter'){if(e.target.id==='joinCode')joinByCode();if(e.target.id==='roomName')createRoom();if(e.target.id==='addr')e.target.blur()}return}
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter','Slash'].includes(e.code))e.preventDefault();
   keys.add(e.code);
@@ -1428,6 +1453,66 @@ function renderLan(){
     }
   });
 }
+
+
+/* =====================================================================
+   ПРИЛОЖЕНИЕ SprintGames: установка на телефон / компьютер
+   ===================================================================== */
+const ICO={
+  dots:'<svg class="ii" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
+  share:'<svg class="ii" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>',
+  plus:'<svg class="ii" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg>',
+  dl:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>'
+};
+const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const isAndroid=/Android/i.test(navigator.userAgent);
+const isStandalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+let installEvt=null;
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e});
+addEventListener('appinstalled',()=>{installEvt=null;closeInstall()});
+if('serviceWorker' in navigator&&window.isSecureContext&&location.protocol.startsWith('http'))navigator.serviceWorker.register('/sw.js').catch(()=>{});
+
+function installSteps(){
+  if(isIOS)return`<ol class="steps">
+      <li>Откройте эту страницу в <b>Safari</b>.</li>
+      <li>Нажмите кнопку <b>«Поделиться»</b> ${ICO.share} внизу экрана.</li>
+      <li>Выберите <b>«На экран Домой»</b> ${ICO.plus} и нажмите <b>«Добавить»</b>.</li></ol>`;
+  return`<ol class="steps">
+      <li>Откройте эту страницу в <b>Chrome</b>.</li>
+      <li>Нажмите меню ${ICO.dots} в правом верхнем углу.</li>
+      <li>Выберите <b>«Установить приложение»</b> или <b>«Добавить на главный экран»</b>, затем <b>«Установить»</b>.</li></ol>`;
+}
+function openInstall(){
+  if(installEvt){
+    const e=installEvt;installEvt=null;
+    e.prompt();e.userChoice.then(c=>{if(c.outcome!=='accepted')installEvt=e}).catch(()=>{});
+    return;
+  }
+  const box=$('installContent');
+  const head=`<div class="ihead"><img src="/icons/icon-192.png" alt="" onerror="this.style.display='none'"><div><div class="iname">SprintGames</div><div class="isub">4 мини-игры · с ботом и с друзьями</div></div></div>`;
+  if(isTouch){
+    box.innerHTML=head+`<p>Приложение появится на главном экране телефона со своей иконкой:</p>`+installSteps()+
+      `<p class="note">Онлайн-игра с друзьями работает, когда телефон подключён к той же сети, что и компьютер с сервером.</p>`;
+    $('installBox').classList.remove('hidden');
+  }else{
+    box.innerHTML=head+`<p>Чтобы установить игру на телефон:</p><div class="lan" id="lanInstall"></div>`+
+      `<p><b>На Android</b> — после открытия страницы:</p>`+installSteps().replace('<b>Chrome</b>','<b>Chrome</b> на телефоне')+
+      `<p><b>На iPhone</b> — откройте страницу в Safari, нажмите «Поделиться» ${ICO.share} и выберите «На экран Домой».</p>`;
+    $('installBox').classList.remove('hidden');
+    loadLan().then(info=>{
+      const el=$('lanInstall');if(!el)return;
+      if(!info||!info.ips||!info.ips.length){el.outerHTML='<p class="note">Запустите сервер и откройте игру по адресу сети, чтобы появился QR-код для телефона.</p>';return}
+      const url=`http://${info.ips[0].address}:${info.port}`;
+      el.innerHTML=`<div class="qr">${QR.svg(url)}</div><div>Подключите телефон к той же сети Wi-Fi (или точке доступа), наведите камеру на код или откройте:<br><span class="url">${esc(url)}</span></div>`;
+    });
+  }
+}
+function closeInstall(){$('installBox').classList.add('hidden')}
+$('installBtn').innerHTML=ICO.dl+'Скачать приложение';
+$('installBtn').onclick=openInstall;
+$('installClose').onclick=closeInstall;
+$('installBox').addEventListener('pointerdown',e=>{if(e.target.id==='installBox')closeInstall()});
+if(isStandalone)$('installBtn').style.display='none';
 
 setState('menu');
 requestAnimationFrame(loop);
