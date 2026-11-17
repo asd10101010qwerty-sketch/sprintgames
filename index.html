@@ -1879,11 +1879,48 @@ window.appBack=function(){
   if(state==='over'){if(Net.online){netLeave();setState('online')}else setState('menu');return true}
   return false;
 };
-$('installBtn').innerHTML=ICO.dl+'Скачать приложение';
-$('installBtn').onclick=openInstall;
 $('installClose').onclick=closeInstall;
 $('installBox').addEventListener('pointerdown',e=>{if(e.target.id==='installBox')closeInstall()});
-if(isStandalone||IN_APP)$('installBtn').style.display='none';
+
+/* ---------- Обновление установленного приложения по кнопке (без переустановки и без нового ярлыка) ---------- */
+const ICO_UPD='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>';
+const canNativeUpdate=IN_APP&&window.SprintApp&&typeof SprintApp.update==='function';
+const installed=isStandalone||IN_APP;
+function toast(t){
+  let el=$('sgToast');
+  if(!el){el=document.createElement('div');el.id='sgToast';el.style.cssText='position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:99;background:#1b222d;border:1px solid #36404f;color:#e8edf5;padding:10px 16px;border-radius:10px;font:600 14px system-ui,sans-serif;box-shadow:0 8px 24px #0008;transition:opacity .3s';document.body.appendChild(el)}
+  el.textContent=t;el.style.opacity='1';clearTimeout(toast.t);toast.t=setTimeout(()=>el.style.opacity='0',3500);
+}
+async function appUpdate(){
+  const b=$('installBtn');if(b.disabled)return;
+  b.disabled=true;b.innerHTML=ICO_UPD+'Обновление...';
+  const fail=t=>{b.disabled=false;b.innerHTML=ICO_UPD+'Обновить';toast(t)};
+  try{
+    if(canNativeUpdate){ // приложение Android / программа Windows: само скачает свежую игру и перезагрузит окно
+      sessionStorage.setItem('sgUpdated','1');
+      const ok=await SprintApp.update();
+      if(ok===false){sessionStorage.removeItem('sgUpdated');fail('Нет интернета — обновить не получилось')}
+      return;
+    }
+    if(IN_APP){openInstall();b.disabled=false;b.innerHTML=ICO_UPD+'Обновить';return} // старое приложение без обновления — поставить заново поверх
+    const r=await fetch('/index.html?u='+Date.now(),{cache:'no-store'});
+    if(!r.ok)throw new Error('http');
+    await r.text();
+    if('caches' in window)for(const k of await caches.keys())await caches.delete(k);
+    if(navigator.serviceWorker)for(const g of await navigator.serviceWorker.getRegistrations())await g.update().catch(()=>{});
+    sessionStorage.setItem('sgUpdated','1');
+    location.reload();
+  }catch(e){fail('Нет интернета — обновить не получилось')}
+}
+if(installed){
+  $('installBtn').innerHTML=ICO_UPD+'Обновить';
+  $('installBtn').title='Скачать последнюю версию игры в это приложение';
+  $('installBtn').onclick=appUpdate;
+}else{
+  $('installBtn').innerHTML=ICO.dl+'Скачать приложение';
+  $('installBtn').onclick=openInstall;
+}
+if(sessionStorage.getItem('sgUpdated')){sessionStorage.removeItem('sgUpdated');setTimeout(()=>toast('Готово — у вас последняя версия'),300)}
 
 setState('menu');
 requestAnimationFrame(loop);

@@ -7,5 +7,6 @@ contextBridge.exposeInMainWorld('SprintApp', {
   findServer: () => ipcRenderer.invoke('sg:findServer'),
   isHost: () => ipcRenderer.sendSync('sg:isHost'),
   vibrate: () => {},
+  update: () => ipcRenderer.invoke('sg:update'),
   version: () => '1'
 });

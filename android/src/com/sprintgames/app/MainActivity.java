@@ -78,7 +78,7 @@ public class MainActivity extends Activity {
         hideBars();
         if (state != null) web.restoreState(state);
         else new Thread(() -> {
-            update();
+            downloadUpdate();
             runOnUiThread(() -> { if (web != null) web.loadUrl("http://" + HOST + "/"); });
         }).start();
     }
@@ -94,31 +94,38 @@ public class MainActivity extends Activity {
         return s.length() > 50000 && s.contains("SprintGames") && s.contains("</html>");
     }
 
-    private void update() {
+    private boolean downloadUpdate() {
+        return downloadUpdate(4000);
+    }
+
+    private boolean downloadUpdate(int timeout) {
         HttpURLConnection c = null;
         try {
-            c = (HttpURLConnection) new URL(UPDATE_URL).openConnection();
-            c.setConnectTimeout(4000);
-            c.setReadTimeout(4000);
+            c = (HttpURLConnection) new URL(UPDATE_URL + "?u=" + System.currentTimeMillis()).openConnection();
+            c.setConnectTimeout(timeout);
+            c.setReadTimeout(timeout);
             c.setUseCaches(false);
-            if (c.getResponseCode() != 200) return;
+            if (c.getResponseCode() != 200) return false;
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             try (InputStream in = c.getInputStream()) {
                 byte[] b = new byte[16384];
                 int n;
                 while ((n = in.read(b)) > 0) {
                     out.write(b, 0, n);
-                    if (out.size() > 5_000_000) return;
+                    if (out.size() > 5_000_000) return false;
                 }
             }
             byte[] data = out.toByteArray();
-            if (!validPage(new String(data, StandardCharsets.UTF_8))) return;
+            if (!validPage(new String(data, StandardCharsets.UTF_8))) return false;
             File tmp = new File(getFilesDir(), "index.html.tmp");
             try (FileOutputStream f = new FileOutputStream(tmp)) {
                 f.write(data);
             }
-            if (!tmp.renameTo(cachedPage())) tmp.delete();
+            if (tmp.renameTo(cachedPage())) return true;
+            tmp.delete();
+            return false;
         } catch (Exception ignored) {
+            return false;
         } finally {
             if (c != null) c.disconnect();
         }
@@ -246,6 +253,21 @@ public class MainActivity extends Activity {
                 else v.vibrate(ms);
             } catch (Exception ignored) {
             }
+        }
+
+        /** Кнопка «Обновить»: скачать свежую игру в фоне и перезагрузить страницу. */
+        @JavascriptInterface
+        public boolean update() {
+            new Thread(() -> {
+                boolean ok = downloadUpdate(15000);
+                runOnUiThread(() -> {
+                    if (web == null) return;
+                    if (ok) web.reload();
+                    else web.evaluateJavascript("sessionStorage.removeItem('sgUpdated');toast('Нет интернета — обновить не получилось');"
+                            + "var b=document.getElementById('installBtn');b.disabled=false;b.innerHTML=ICO_UPD+'Обновить';", null);
+                });
+            }).start();
+            return true;
         }
 
         @JavascriptInterface

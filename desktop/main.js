@@ -90,22 +90,35 @@ function download(url, timeout) {
     req.on('error', () => res(null));
   });
 }
-async function gamePage() {
+const GAME_DIR = () => path.join(app.getPath('userData'), 'game');
+// скачать свежую игру; путь к ней или null
+async function fetchUpdate(timeout) {
   const fs = require('fs');
-  const dir = path.join(app.getPath('userData'), 'game'), file = path.join(dir, 'index.html');
+  const dir = GAME_DIR(), file = path.join(dir, 'index.html');
   try {
-    const html = await download(UPDATE_URL, 4000);
-    if (html && validPage(html)) {
-      fs.mkdirSync(path.join(dir, 'icons'), { recursive: true });
-      for (const f of fs.readdirSync(path.join(APP_DIR, 'icons'))) fs.copyFileSync(path.join(APP_DIR, 'icons', f), path.join(dir, 'icons', f));
-      fs.writeFileSync(file + '.tmp', html);
-      fs.renameSync(file + '.tmp', file);
-      return file;
-    }
-  } catch { }
+    const html = await download(UPDATE_URL + '?u=' + Date.now(), timeout);
+    if (!html || !validPage(html)) return null;
+    fs.mkdirSync(path.join(dir, 'icons'), { recursive: true });
+    for (const f of fs.readdirSync(path.join(APP_DIR, 'icons'))) fs.copyFileSync(path.join(APP_DIR, 'icons', f), path.join(dir, 'icons', f));
+    fs.writeFileSync(file + '.tmp', html);
+    fs.renameSync(file + '.tmp', file);
+    return file;
+  } catch { return null; }
+}
+async function gamePage() {
+  const fs = require('fs'), file = path.join(GAME_DIR(), 'index.html');
+  const fresh = await fetchUpdate(4000);
+  if (fresh) return fresh;
   try { if (validPage(fs.readFileSync(file, 'utf8'))) return file; } catch { }
   return path.join(APP_DIR, 'index.html');
 }
+// кнопка «Обновить» в игре
+ipcMain.handle('sg:update', async () => {
+  const p = await fetchUpdate(15000);
+  if (!p) return false;
+  if (win) win.loadFile(p);
+  return true;
+});
 
 function createWindow() {
   Menu.setApplicationMenu(null);
