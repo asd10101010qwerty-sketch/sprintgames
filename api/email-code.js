@@ -40,7 +40,7 @@ async function emailjs(to, code) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      service_id: env('EMAILJS_SERVICE_ID'),
+      service_id: 'service_wlyob34',
       template_id: env('EMAILJS_TEMPLATE_ID'),
       user_id: EMAILJS_PUBLIC_KEY,
       accessToken: env('EMAILJS_PRIVATE_KEY'),
