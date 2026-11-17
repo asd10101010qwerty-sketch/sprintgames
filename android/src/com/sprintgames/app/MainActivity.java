@@ -18,11 +18,18 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -70,7 +77,51 @@ public class MainActivity extends Activity {
         setContentView(web);
         hideBars();
         if (state != null) web.restoreState(state);
-        else web.loadUrl("http://" + HOST + "/");
+        else new Thread(() -> {
+            update();
+            runOnUiThread(() -> { if (web != null) web.loadUrl("http://" + HOST + "/"); });
+        }).start();
+    }
+
+    // Обновление игры без переустановки: свежая версия с сайта, без интернета — последняя скачанная, иначе встроенная
+    private static final String UPDATE_URL = "https://sprintgames.vercel.app/index.html";
+
+    private File cachedPage() {
+        return new File(getFilesDir(), "index.html");
+    }
+
+    private static boolean validPage(String s) {
+        return s.length() > 50000 && s.contains("SprintGames") && s.contains("</html>");
+    }
+
+    private void update() {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(UPDATE_URL).openConnection();
+            c.setConnectTimeout(4000);
+            c.setReadTimeout(4000);
+            c.setUseCaches(false);
+            if (c.getResponseCode() != 200) return;
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            try (InputStream in = c.getInputStream()) {
+                byte[] b = new byte[16384];
+                int n;
+                while ((n = in.read(b)) > 0) {
+                    out.write(b, 0, n);
+                    if (out.size() > 5_000_000) return;
+                }
+            }
+            byte[] data = out.toByteArray();
+            if (!validPage(new String(data, StandardCharsets.UTF_8))) return;
+            File tmp = new File(getFilesDir(), "index.html.tmp");
+            try (FileOutputStream f = new FileOutputStream(tmp)) {
+                f.write(data);
+            }
+            if (!tmp.renameTo(cachedPage())) tmp.delete();
+        } catch (Exception ignored) {
+        } finally {
+            if (c != null) c.disconnect();
+        }
     }
 
     /** Отдаёт файлы игры из assets/www и не даёт уйти со страницы игры. */
@@ -82,6 +133,12 @@ public class MainActivity extends Activity {
             String p = u.getPath();
             if (p == null || p.equals("/") || p.isEmpty()) p = "/index.html";
             if (p.contains("..")) return notFound();
+            try {
+                File cached = cachedPage();
+                if (p.equals("/index.html") && cached.isFile())
+                    return new WebResourceResponse("text/html", "utf-8", new FileInputStream(cached));
+            } catch (IOException ignored) {
+            }
             try {
                 InputStream in = getAssets().open("www" + p);
                 return new WebResourceResponse(mime(p), "utf-8", in);

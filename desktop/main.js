@@ -73,6 +73,40 @@ ipcMain.handle('sg:findServer', async () => {
 });
 ipcMain.on('sg:isHost', e => { e.returnValue = !!ownServer; });
 
+// Обновление игры без переустановки: при запуске берём свежую версию с сайта,
+// без интернета — последнюю скачанную, а если её нет — встроенную в программу.
+const UPDATE_URL = 'https://sprintgames.vercel.app/index.html';
+const validPage = s => s.length > 50000 && s.includes('SprintGames') && s.includes('</html>');
+function download(url, timeout) {
+  return new Promise(res => {
+    const req = require('https').get(url, { timeout, headers: { 'Cache-Control': 'no-cache' } }, r => {
+      if (r.statusCode !== 200) { r.resume(); return res(null); }
+      let d = ''; r.setEncoding('utf8');
+      r.on('data', c => { d += c; if (d.length > 5e6) req.destroy(); });
+      r.on('end', () => res(d));
+      r.on('error', () => res(null));
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => res(null));
+  });
+}
+async function gamePage() {
+  const fs = require('fs');
+  const dir = path.join(app.getPath('userData'), 'game'), file = path.join(dir, 'index.html');
+  try {
+    const html = await download(UPDATE_URL, 4000);
+    if (html && validPage(html)) {
+      fs.mkdirSync(path.join(dir, 'icons'), { recursive: true });
+      for (const f of fs.readdirSync(path.join(APP_DIR, 'icons'))) fs.copyFileSync(path.join(APP_DIR, 'icons', f), path.join(dir, 'icons', f));
+      fs.writeFileSync(file + '.tmp', html);
+      fs.renameSync(file + '.tmp', file);
+      return file;
+    }
+  } catch { }
+  try { if (validPage(fs.readFileSync(file, 'utf8'))) return file; } catch { }
+  return path.join(APP_DIR, 'index.html');
+}
+
 function createWindow() {
   Menu.setApplicationMenu(null);
   win = new BrowserWindow({
@@ -91,7 +125,7 @@ function createWindow() {
     }
   });
   win.once('ready-to-show', () => { win.maximize(); win.show(); });
-  win.loadFile(path.join(APP_DIR, 'index.html'));
+  gamePage().then(p => { if (win) win.loadFile(p); });
   // F11 — полный экран
   win.webContents.on('before-input-event', (e, input) => {
     if (input.type === 'keyDown' && input.key === 'F11') { win.setFullScreen(!win.isFullScreen()); e.preventDefault(); }

@@ -1132,7 +1132,7 @@ document.getElementById('menuBtn').onclick=document.getElementById('menuBtn2').o
    а комнату (список игроков, вход по коду, пересылку) держит браузер хоста.
    CloudSock ведёт себя как WebSocket к server.js, поэтому остальной код онлайна не меняется. */
 const CLOUD_BROKERS=['wss://test.mosquitto.org:8081/mqtt','wss://broker.hivemq.com:8884/mqtt'];
-const CT='sprintgames/v1/';
+const CT='sprintgames/v2/';
 function mqttConnect(url,timeout){
   return new Promise((resolve,reject)=>{
     const te=new TextEncoder(),td=new TextDecoder();
@@ -1167,51 +1167,79 @@ function mqttConnect(url,timeout){
         }else if(h>>4===3){ // PUBLISH
           const tl=(body[0]<<8)|body[1],topic=td.decode(body.subarray(2,2+tl));
           let o=2+tl;if((h>>1)&3)o+=2;
-          if(c.onmsg)try{c.onmsg(topic,td.decode(body.subarray(o)))}catch(err){console.error(err)}
+          if(c.onmsg)try{c.onmsg(topic,td.decode(body.subarray(o)),!!(h&1))}catch(err){console.error(err)}
         }
       }
     };
   });
 }
 const cleanStr=(s,n,def)=>(String(s||'').replace(/[<>\u0000-\u001f]/g,'').trim().slice(0,n))||def;
+// Подключаемся сразу ко всем брокерам: если у кого-то один из них недоступен, комнаты всё равно видны,
+// а в комнату входим через тот брокер, на котором сидит её хост. От часов на устройствах ничего не зависит.
 class CloudSock{
   constructor(){
     this.readyState=0;this.onopen=this.onmessage=this.onclose=this.onerror=null;
     this.pid=1+Math.floor(Math.random()*2e9);
-    this.list=new Map();this.host=null;this.guest=null;this.joining=null;this.mq=null;this.tick=0;
+    this.mqs={};this.list=new Map();this.host=null;this.guest=null;this.joining=null;this.tick=0;
     this._open();
   }
   async _open(){
-    for(const u of CLOUD_BROKERS){
-      if(this.readyState===3)break;
-      try{this.mq=await mqttConnect(u,7000);break}catch{}
-    }
-    if(this.readyState===3){this.mq&&this.mq.close();return}
-    if(!this.mq){this.readyState=3;this.onerror&&this.onerror({});this.onclose&&this.onclose({});return}
-    this.mq.onmsg=(t,p)=>this._in(t,p);
-    this.mq.onclose=()=>this._dead();
-    this.mq.sub(CT+'rooms/+');this.mq.sub(CT+'c/'+this.pid);
-    this.tick=setInterval(()=>this._tick(),2000);
-    this.readyState=1;this.onopen&&this.onopen({});
+    let opened=false;
+    const tries=CLOUD_BROKERS.map((u,i)=>mqttConnect(u,8000).then(c=>{
+      if(this.readyState===3){c.close();return}
+      this.mqs[i]=c;
+      c.onmsg=(t,p,ret)=>this._in(i,t,p,ret);
+      c.onclose=()=>this._lost(i);
+      c.sub(CT+'rooms/+');c.sub(CT+'c/'+this.pid);
+      if(this.host){c.sub(CT+'r/'+this.host.id+'/h');this._listing()} // хост доступен и через брокер, подключившийся позже
+      if(!opened){opened=true;this.tick=setInterval(()=>this._tick(),2000);this.readyState=1;this.onopen&&this.onopen({})}
+    }));
+    await Promise.allSettled(tries);
+    if(!opened&&this.readyState!==3){this.readyState=3;this.onerror&&this.onerror({});this.onclose&&this.onclose({})}
   }
-  _dead(){if(this.readyState===3)return;this.readyState=3;clearInterval(this.tick);if(this.joining)clearTimeout(this.joining.t);this.onclose&&this.onclose({})}
+  _home(){for(let i=0;i<CLOUD_BROKERS.length;i++)if(this.mqs[i])return i;return -1}
+  _lost(i){
+    delete this.mqs[i];
+    if(this.readyState!==1)return;
+    const h=this.host,g=this.guest;
+    if(this._home()<0||(g&&g.b===i))this._dead(); // гости хоста на этом брокере отвалятся сами по таймауту
+  }
+  _brokers(){return Object.keys(this.mqs).map(Number)}
+  _gpub(o){ // хост -> гости: на каждый брокер, через который подключены гости
+    const h=this.host,bs=new Set();
+    for(const mb of h.members.values())if(mb.pid!==this.pid)bs.add(mb.b);
+    for(const b of bs)this._pub(b,'r/'+h.id+'/g',o);
+  }
+  _dead(){
+    if(this.readyState===3)return;
+    this.readyState=3;clearInterval(this.tick);if(this.joining)clearTimeout(this.joining.t);
+    for(const c of Object.values(this.mqs))c.close();
+    this.onclose&&this.onclose({});
+  }
   close(){
     if(this.readyState===3)return;
     if(this.readyState===1)this._leave();
     this.readyState=3;clearInterval(this.tick);
-    const mq=this.mq;if(mq)setTimeout(()=>mq.close(),150); // успеть отправить «вышел»
+    const all=Object.values(this.mqs);setTimeout(()=>all.forEach(c=>c.close()),150); // успеть отправить «вышел»
     setTimeout(()=>this.onclose&&this.onclose({}),0);
   }
   _emit(o){setTimeout(()=>{if(this.readyState===1&&this.onmessage)this.onmessage({data:JSON.stringify(o)})},0)}
-  _pub(t,o){this.mq.pub(CT+t,JSON.stringify(o))}
+  _pub(b,t,o){const c=this.mqs[b];if(c)c.pub(CT+t,JSON.stringify(o))}
+  _sub(b,t){const c=this.mqs[b];if(c)c.sub(CT+t)}
+  _unsub(b,t){const c=this.mqs[b];if(c)c.unsub(CT+t)}
   _room(){const r=this.host;return{id:r.id,name:r.name,max:r.max,game:r.game,state:r.state,players:[...r.members.values()].map(m=>({slot:m.slot,nick:m.nick,pid:m.pid})).sort((a,b)=>a.slot-b.slot)}}
-  _push(){const room=this._room();this._emit({t:'room',room});this._pub('r/'+room.id+'/g',{t:'room',room})}
-  _listing(){const r=this.host;this.mq.pub(CT+'rooms/'+r.id,JSON.stringify({id:r.id,name:r.name,max:r.max,game:r.game,state:r.state,count:r.members.size,ts:Date.now()}),true)}
+  _push(){const room=this._room();this._emit({t:'room',room});this._gpub({t:'room',room})}
+  _listing(closed){
+    const r=this.host;if(!r)return;
+    const bs=this._brokers();
+    const e=closed?{id:r.id,closed:true}:{id:r.id,name:r.name,max:r.max,game:r.game,state:r.state,count:r.members.size,bs};
+    for(const b of bs)this._pub(b,'rooms/'+r.id,e);
+  }
   _leave(){
     const h=this.host,g=this.guest,j=this.joining;
-    if(j){clearTimeout(j.t);this.mq.unsub(CT+'r/'+j.id+'/g');this.joining=null}
-    if(h){this._pub('r/'+h.id+'/g',{t:'closed'});this.mq.pub(CT+'rooms/'+h.id,'',true);this.mq.unsub(CT+'r/'+h.id+'/h');this.list.delete(h.id);this.host=null}
-    if(g){this._pub('r/'+g.id+'/h',{t:'leave',pid:this.pid});this.mq.unsub(CT+'r/'+g.id+'/g');this.guest=null}
+    if(j){clearTimeout(j.t);this._unsub(j.b,'r/'+j.id+'/g');this.joining=null}
+    if(h){this._gpub({t:'closed'});this._listing(true);for(const b of this._brokers())this._unsub(b,'r/'+h.id+'/h');this.list.delete(h.id);this.host=null}
+    if(g){this._pub(g.b,'r/'+g.id+'/h',{t:'leave',pid:this.pid});this._unsub(g.b,'r/'+g.id+'/g');this.guest=null}
   }
   send(s){
     let m;try{m=JSON.parse(s)}catch{return}
@@ -1220,16 +1248,17 @@ class CloudSock{
     switch(m.t){
       case 'list':{
         const now=Date.now(),rooms=[];
-        for(const[id,e]of this.list){if(now-e.seen>9000)this.list.delete(id);else rooms.push(e.info)}
+        for(const[id,e]of this.list){if(now-e.seen>7000)this.list.delete(id);else rooms.push(e.info)}
         this._emit({t:'list',rooms});break;
       }
       case 'create':{
         this._leave();
+        if(this._home()<0)return;
         const abc='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let id;
         do id=Array.from({length:4},()=>abc[Math.floor(Math.random()*abc.length)]).join('');while(this.list.has(id));
         const r={id,name:cleanStr(m.name,24,'Сервер'),max:Math.min(4,Math.max(2,m.max|0)),game:Math.min(3,Math.max(0,m.game|0)),state:'lobby',members:new Map()};
-        r.members.set(this.pid,{pid:this.pid,slot:0,nick:cleanStr(m.nick,12,'Игрок'),seen:Date.now()});
-        this.host=r;this.mq.sub(CT+'r/'+id+'/h');
+        r.members.set(this.pid,{pid:this.pid,slot:0,nick:cleanStr(m.nick,12,'Игрок'),seen:Date.now(),b:-1});
+        this.host=r;for(const b of this._brokers())this._sub(b,'r/'+id+'/h');
         this._emit({t:'joined',id,pid:this.pid,host:true});this._push();this._listing();
         break;
       }
@@ -1237,13 +1266,16 @@ class CloudSock{
         const id=String(m.id||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);
         if(id.length!==4)return this._emit({t:'err',msg:'Сервер не найден'});
         if((g&&g.id===id)||(h&&h.id===id)||(this.joining&&this.joining.id===id))return;
+        // входим через первый брокер, который есть и у нас, и у хоста
+        const e=this.list.get(id),b=e?(e.bs.find(x=>this.mqs[x])??-1):this._home();
+        if(b<0||!this.mqs[b])return this._emit({t:'err',msg:'Этот сервер сейчас недоступен из вашей сети'});
         this._leave();
-        this.mq.sub(CT+'r/'+id+'/g');
-        this.joining={id,t:setTimeout(()=>{
+        this._sub(b,'r/'+id+'/g');
+        this.joining={id,b,t:setTimeout(()=>{
           if(!this.joining||this.joining.id!==id)return;
-          this.joining=null;this.mq.unsub(CT+'r/'+id+'/g');this._emit({t:'err',msg:'Сервер не найден'});
+          this.joining=null;this._unsub(b,'r/'+id+'/g');this._emit({t:'err',msg:'Сервер не найден'});
         },6000)};
-        this._pub('r/'+id+'/h',{t:'join',pid:this.pid,nick:cleanStr(m.nick,12,'Игрок')});
+        this._pub(b,'r/'+id+'/h',{t:'join',pid:this.pid,nick:cleanStr(m.nick,12,'Игрок')});
         break;
       }
       case 'leave':this._leave();break;
@@ -1253,8 +1285,8 @@ class CloudSock{
         if(m.state==='playing'||m.state==='lobby')h.state=m.state;
         this._push();this._listing();break;
       case 'relay':
-        if(h)this._pub('r/'+h.id+'/g',{t:'relay',d:m.d});
-        else if(g)this._pub('r/'+g.id+'/h',{t:'relay',from:this.pid,d:m.d});
+        if(h)this._gpub({t:'relay',d:m.d});
+        else if(g)this._pub(g.b,'r/'+g.id+'/h',{t:'relay',from:this.pid,d:m.d});
         break;
     }
   }
@@ -1263,45 +1295,46 @@ class CloudSock{
     if(h){
       let gone=false;
       for(const[pid,mb]of h.members)if(pid!==this.pid&&now-mb.seen>10000){h.members.delete(pid);this._emit({t:'left',pid});gone=true}
-      if(gone)this._push();else this._pub('r/'+h.id+'/g',{t:'hb'});
+      if(gone)this._push();else this._gpub({t:'hb'});
       this._listing();
     }
     if(g){
-      if(now-g.seen>10000){this.mq.unsub(CT+'r/'+g.id+'/g');this.guest=null;this._emit({t:'closed'})}
-      else this._pub('r/'+g.id+'/h',{t:'hb',pid:this.pid});
+      if(now-g.seen>10000){this._unsub(g.b,'r/'+g.id+'/g');this.guest=null;this._emit({t:'closed'})}
+      else this._pub(g.b,'r/'+g.id+'/h',{t:'hb',pid:this.pid});
     }
   }
-  _in(topic,p){
+  _in(b,topic,p,retained){
     if(this.readyState!==1||!topic.startsWith(CT))return;
     const [kind,id,dir]=topic.slice(CT.length).split('/'),now=Date.now();
-    if(kind==='rooms'){
-      if(!p){this.list.delete(id);return}
-      let e;try{e=JSON.parse(p)}catch{return}
-      if(!e||Math.abs(now-(+e.ts||0))>20000)return; // старая запись закрытого сервера
-      this.list.set(id,{seen:now,info:{id,name:cleanStr(e.name,24,'Сервер'),max:Math.min(4,Math.max(2,e.max|0)),game:Math.min(3,Math.max(0,e.game|0)),state:e.state==='playing'?'playing':'lobby',count:Math.min(4,Math.max(0,e.count|0))}});
-      return;
-    }
     let m;try{m=JSON.parse(p)}catch{return}
     if(!m||typeof m!=='object')return;
+    if(kind==='rooms'){
+      if(retained)return; // сохранённые брокером старые записи не показываем — только живые
+      if(m.closed){this.list.delete(id);return}
+      const bs=(Array.isArray(m.bs)?m.bs:[]).map(x=>x|0).filter(x=>x>=0&&x<CLOUD_BROKERS.length);
+      if(!bs.length)return;
+      this.list.set(id,{seen:now,bs,info:{id,name:cleanStr(m.name,24,'Сервер'),max:Math.min(4,Math.max(2,m.max|0)),game:Math.min(3,Math.max(0,m.game|0)),state:m.state==='playing'?'playing':'lobby',count:Math.min(4,Math.max(0,m.count|0))}});
+      return;
+    }
     if(kind==='c'){ // ответ хоста на вход
-      const j=this.joining;if(!j||m.id!==j.id)return;
+      const j=this.joining;if(!j||m.id!==j.id||b!==j.b)return;
       clearTimeout(j.t);this.joining=null;
-      if(m.t==='joined'){this.guest={id:j.id,seen:now};this._emit({t:'joined',id:j.id,pid:this.pid,host:false})}
-      else{this.mq.unsub(CT+'r/'+j.id+'/g');this._emit({t:'err',msg:cleanStr(m.msg,60,'Не удалось войти')})}
+      if(m.t==='joined'){this.guest={id:j.id,b:j.b,seen:now};this._emit({t:'joined',id:j.id,pid:this.pid,host:false})}
+      else{this._unsub(j.b,'r/'+j.id+'/g');this._emit({t:'err',msg:cleanStr(m.msg,60,'Не удалось войти')})}
       return;
     }
     if(kind!=='r')return;
     const h=this.host,g=this.guest;
-    if(dir==='h'&&h&&h.id===id){ // гость -> хост
+    if(dir==='h'&&h&&h.id===id){ // гость -> хост (через любой брокер)
       const pid=+m.pid||+m.from||0,mb=h.members.get(pid);
       if(m.t==='join'){
         if(!pid)return;
-        const reply=o=>this._pub('c/'+pid,{...o,id});
-        if(mb)return reply({t:'joined'});
+        const reply=o=>this._pub(b,'c/'+pid,{...o,id});
+        if(mb){mb.b=b;mb.seen=now;return reply({t:'joined'})}
         if(h.state!=='lobby')return reply({t:'err',msg:'На этом сервере уже идёт игра'});
         if(h.members.size>=h.max)return reply({t:'err',msg:'Сервер заполнен'});
         const used=new Set([...h.members.values()].map(x=>x.slot));let slot=1;while(used.has(slot))slot++;
-        h.members.set(pid,{pid,slot,nick:cleanStr(m.nick,12,'Игрок'),seen:now});
+        h.members.set(pid,{pid,slot,nick:cleanStr(m.nick,12,'Игрок'),seen:now,b});
         reply({t:'joined'});this._push();this._listing();
         return;
       }
@@ -1311,9 +1344,9 @@ class CloudSock{
       else if(m.t==='relay')this._emit({t:'relay',from:pid,d:m.d});
       return;
     }
-    if(dir==='g'&&g&&g.id===id){ // хост -> гости
+    if(dir==='g'&&g&&g.id===id&&g.b===b){ // хост -> гости
       g.seen=now;
-      if(m.t==='closed'){this.mq.unsub(CT+'r/'+id+'/g');this.guest=null;this._emit({t:'closed'})}
+      if(m.t==='closed'){this._unsub(b,'r/'+id+'/g');this.guest=null;this._emit({t:'closed'})}
       else if(m.t==='room'||m.t==='relay')this._emit(m.t==='room'?{t:'room',room:m.room}:{t:'relay',d:m.d});
     }
   }
@@ -1411,6 +1444,16 @@ function netLeave(){netSend({t:'leave'});Net.online=Net.inGame=Net.host=false;Ne
 
 function enterOnline(){
   renderCreate();
+  if(netMode==='lan'&&location.protocol==='https:'){
+    // страница из интернета (https) не может подключаться к серверу в локальной сети — так устроены браузеры
+    if(Net.ws){const o=Net.ws;Net.ws=null;o.close()}
+    setStatus(false,'недоступно на сайте');
+    $('roomList').innerHTML='<div class="empty">Игра «В одной сети Wi-Fi» не работает на сайте в интернете — браузер это запрещает.<br><br>'+
+      'Для игры по Wi-Fi: программа SprintGames для Windows, приложение для Android<br>или игра, открытая по адресу компьютера с сервером (например <b>http://192.168.1.10:3000</b>).<br><br>'+
+      'Прямо здесь можно играть через интернет — с кем угодно и где угодно.<br><br><button class="ghost sm" id="toNetBtn">Играть через интернет</button></div>';
+    $('toNetBtn').onclick=()=>document.querySelector('#modeSeg [data-m="net"]').click();
+    return;
+  }
   if(!Net.ws||Net.ws.readyState!==1)renderRooms(undefined);
   const go=()=>netConnect().then(()=>netSend({t:'list'}));
   const connected=Net.ws&&Net.ws.readyState===1;
