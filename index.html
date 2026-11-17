@@ -2,7 +2,9 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b0e14">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Арена на четверых</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -93,6 +95,46 @@ button.ghost:disabled,button.big:disabled{opacity:.4;cursor:default;transform:no
 .slot .rl svg{width:14px;height:14px}
 .code{font-family:Consolas,monospace;font-size:22px;letter-spacing:4px;color:#ffd166;font-weight:700}
 .game.ro{cursor:default}
+body{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+canvas{touch-action:none}
+.lan{display:flex;gap:14px;align-items:center;text-align:left;font-size:13px;color:#aab3c2;background:#0f141c;border:1px solid #252d3b;border-radius:12px;padding:10px 14px;line-height:1.5}
+.lan:empty{display:none}
+.lan b{color:#e6e9ef}
+.lan .qr{background:#fff;padding:4px;border-radius:8px;line-height:0;flex-shrink:0}
+.lan .qr svg{width:100px;height:100px}
+.lan .url{font-family:Consolas,monospace;color:#ffd166;font-size:16px;font-weight:700;user-select:all;-webkit-user-select:all}
+.lan small{color:#6f7a8b}
+#touch{position:fixed;inset:0;pointer-events:none;z-index:6}
+#stick{position:absolute;left:max(18px,env(safe-area-inset-left));bottom:16px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.2);pointer-events:auto;touch-action:none}
+#knob{position:absolute;left:50%;top:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;background:rgba(255,255,255,.32);box-shadow:0 0 12px rgba(0,0,0,.4);pointer-events:none}
+#actBtn{position:absolute;right:max(22px,env(safe-area-inset-right));bottom:26px;width:108px;height:108px;border-radius:50%;background:rgba(255,209,102,.2);border:3px solid rgba(255,209,102,.75);color:#ffd166;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .08s}
+#actBtn.on{background:rgba(255,209,102,.45);transform:scale(.93)}
+#tPause{position:absolute;top:max(8px,env(safe-area-inset-top));right:max(8px,env(safe-area-inset-right));width:42px;height:42px;border-radius:10px;border:1px solid rgba(255,255,255,.22);background:rgba(0,0,0,.4);pointer-events:auto;display:flex;align-items:center;justify-content:center;cursor:pointer}
+#tPause svg{width:18px;height:18px}
+#rotate{display:none}
+@media (orientation:portrait) and (pointer:coarse){
+  body.playing #rotate{display:flex;position:fixed;inset:0;z-index:20;background:#0b0e14;color:#e6e9ef;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-size:18px;font-weight:600;text-align:center;padding:30px}
+  #rotate svg{width:70px;height:70px}
+}
+@media (max-width:900px),(max-height:560px){
+  .overlay{position:fixed;inset:0;border-radius:0;z-index:10;justify-content:flex-start;padding:14px 12px;gap:10px}
+  .overlay>*{flex-shrink:0}
+  h1{font-size:24px}
+  #winText{font-size:30px}
+  .sub{font-size:12px;min-height:0}
+  .onl{flex-direction:column}
+  .panel.side{width:auto}
+  .list{max-height:none;min-height:90px}
+  .game{width:92px;padding:8px 4px;font-size:12px}.game svg{width:28px;height:28px}
+  .mode{padding:7px 10px;font-size:13px}
+  .card{min-width:150px;padding:8px 10px}
+  .slot{width:130px;padding:10px}
+  #hud{min-height:0;gap:8px}
+  #hud .mid{display:none}
+  .score{font-size:20px}.name{font-size:11px}.dot{width:7px;height:7px}
+  .lan .qr svg{width:84px;height:84px}
+  body{align-items:flex-start;padding-top:4px}
+}
 </style>
 </head>
 <body>
@@ -139,6 +181,7 @@ button.ghost:disabled,button.big:disabled{opacity:.4;cursor:default;transform:no
         <div class="panel wide">
           <div class="ph"><span>Серверы <span class="st" id="netStatus"><i></i>нет соединения</span></span><div class="joinrow"><input id="joinCode" placeholder="КОД" maxlength="4" autocomplete="off"><button class="ghost sm" id="joinBtn">Войти по коду</button></div></div>
           <div class="list" id="roomList"></div>
+          <div class="lan" id="lanOnline"></div>
         </div>
       </div>
       <div class="err" id="netErr"></div>
@@ -148,6 +191,7 @@ button.ghost:disabled,button.big:disabled{opacity:.4;cursor:default;transform:no
     <div class="overlay hidden" id="lobby">
       <h1 id="lobbyName">Сервер</h1>
       <div class="hint">Код сервера (скажите его друзьям): <span class="code" id="lobbyCode"></span></div>
+      <div class="lan" id="lanLobby"></div>
       <div class="games" id="lobbyGames"></div>
       <div class="slots" id="slots"></div>
       <p class="sub" id="lobbyHint"></p>
@@ -156,6 +200,13 @@ button.ghost:disabled,button.big:disabled{opacity:.4;cursor:default;transform:no
     </div>
   </div>
 </div>
+
+<div id="touch" class="hidden">
+  <div id="stick"><div id="knob"></div></div>
+  <div id="actBtn"><span id="actLbl">Огонь</span></div>
+  <div id="tPause"><svg viewBox="0 0 24 24" fill="#e6e9ef"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></div>
+</div>
+<div id="rotate"><svg viewBox="0 0 24 24" fill="none" stroke="#ffd166" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="11" rx="2"/><path d="M8 3.5a8 8 0 0 1 9 1.5M17 2v3h-3"/></svg>Поверните телефон горизонтально</div>
 
 <script>
 /* =====================================================================
@@ -189,7 +240,8 @@ let dpr=1;
 function fit(){
   dpr=window.devicePixelRatio||1;
   cv.width=W*dpr;cv.height=H*dpr;
-  const s=Math.min((innerWidth-32)/W,(innerHeight-100)/H,1.4);
+  const hud=document.getElementById('hud'),hh=(hud&&hud.offsetHeight||46)+22,pad=innerWidth<700?8:32;
+  const s=Math.min((innerWidth-pad)/W,(innerHeight-hh)/H,1.4);
   cv.style.width=W*s+'px';cv.style.height=H*s+'px';
   document.getElementById('wrap').style.width=W*s+'px';
 }
@@ -220,8 +272,7 @@ function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;',
 function input(p,dt){
   if(p.remote)return Net.inputs[p.remote]||{x:0,y:0,act:false};
   if(p.bot)return G.bot(p,dt);
-  const c=p.ctrl;
-  return{x:(held(c.right)?1:0)-(held(c.left)?1:0),y:(held(c.down)?1:0)-(held(c.up)?1:0),act:held(c.fire)};
+  return readCtrl(p.ctrl);
 }
 
 /* ---------- звук ---------- */
@@ -945,6 +996,8 @@ function selectGame(k){gi=k;G=GAMES[k];localStorage.setItem('hubGame',k);particl
 function setState(s){
   state=s;
   for(const id of['menu','pause','over','online','lobby'])document.getElementById(id).classList.toggle('hidden',s!==id);
+  document.body.classList.toggle('playing',s==='play'||s==='pause');updTouch();
+  if(s==='online'||s==='lobby')renderLan();
   if(s==='menu'){particles=[];renderMenu();preview()}
   if(s==='online')enterOnline();
   if(s==='lobby'){particles=[];renderLobby();lobbyPreview()}
@@ -970,7 +1023,7 @@ function buildHud(){
     if(k===half)html+=mid;
     html+=`<div class="pl" style="--c:${COLORS[p.i]}"><div><div class="name">${esc(p.name)}</div><div class="dots" id="d${k}"></div></div><div class="score" id="s${k}">0</div></div>`;
   });
-  document.getElementById('hud').innerHTML=html;
+  document.getElementById('hud').innerHTML=html;fit();
 }
 function updateHud(){
   players.forEach((p,k)=>{
@@ -1226,8 +1279,8 @@ function guestTick(dt){
   particles=particles.filter(p=>p.life>0);
 }
 function sendInput(){
-  const c=SOLO,on=state==='play';
-  const x=on?(held(c.right)?1:0)-(held(c.left)?1:0):0,y=on?(held(c.down)?1:0)-(held(c.up)?1:0):0,act=on&&held(c.fire);
+  const on=state==='play',r=on?readCtrl(SOLO):{x:0,y:0,act:false};
+  const x=Math.round(r.x*10)/10,y=Math.round(r.y*10)/10,act=!!r.act;
   const k=x+','+y+','+act,now=performance.now();
   if(k!==Net.lastIn||now-Net.lastInT>250){Net.lastIn=k;Net.lastInT=now;relay({k:'in',x,y,act})}
 }
@@ -1238,6 +1291,143 @@ $('createBtn').onclick=createRoom;
 $('joinBtn').onclick=joinByCode;
 $('lobbyStart').onclick=hostStart;
 $('lobbyLeave').onclick=()=>{netLeave();setState('online')};
+
+
+/* =====================================================================
+   ТЕЛЕФОН: сенсорное управление
+   ===================================================================== */
+const isTouch=matchMedia('(pointer:coarse)').matches;
+const touch={on:isTouch,x:0,y:0,act:false};
+function readCtrl(c){
+  let x=(held(c.right)?1:0)-(held(c.left)?1:0),y=(held(c.down)?1:0)-(held(c.up)?1:0),act=held(c.fire);
+  if(touch.on&&(c===SOLO||c===CTRL[0])){if(!x)x=touch.x;if(!y)y=touch.y;act=act||touch.act}
+  return{x,y,act};
+}
+function updTouch(){
+  $('touch').classList.toggle('hidden',!(isTouch&&state==='play'));
+  const r=G.rows[G.rows.length-1];$('actLbl').textContent=r?r[0]:'';
+}
+(function(){
+  const st=$('stick'),kn=$('knob'),ab=$('actBtn');let id=null;
+  const move=e=>{
+    const r=st.getBoundingClientRect(),R=r.width/2,m=R*.72;
+    let dx=e.clientX-(r.left+R),dy=e.clientY-(r.top+R);const d=Math.hypot(dx,dy);
+    if(d>m){dx=dx/d*m;dy=dy/d*m}
+    kn.style.transform=`translate(${dx}px,${dy}px)`;
+    let nx=dx/m,ny=dy/m;if(Math.hypot(nx,ny)<.22){nx=0;ny=0}
+    touch.x=nx;touch.y=ny;
+  };
+  st.addEventListener('pointerdown',e=>{id=e.pointerId;try{st.setPointerCapture(id)}catch{}move(e);e.preventDefault()});
+  st.addEventListener('pointermove',e=>{if(e.pointerId===id)move(e)});
+  const end=e=>{if(e.pointerId!==id)return;id=null;touch.x=touch.y=0;kn.style.transform=''};
+  st.addEventListener('pointerup',end);st.addEventListener('pointercancel',end);
+  const down=e=>{touch.act=true;ab.classList.add('on');e.preventDefault()},up=()=>{touch.act=false;ab.classList.remove('on')};
+  ab.addEventListener('pointerdown',down);ab.addEventListener('pointerup',up);ab.addEventListener('pointercancel',up);ab.addEventListener('pointerleave',up);
+  $('tPause').onclick=()=>{if(state==='play')setState('pause')};
+  addEventListener('contextmenu',e=>{if(isTouch)e.preventDefault()});
+})();
+
+/* =====================================================================
+   QR-КОД (байтовый режим, уровень коррекции L, версии 1–5)
+   ===================================================================== */
+const QR=(()=>{
+  const EXP=new Array(512),LOG=new Array(256);
+  {let x=1;for(let i=0;i<255;i++){EXP[i]=x;LOG[x]=i;x<<=1;if(x&256)x^=0x11d}for(let i=255;i<512;i++)EXP[i]=EXP[i-255]}
+  const mul=(a,b)=>a&&b?EXP[LOG[a]+LOG[b]]:0;
+  function ecc(data,n){
+    let g=[1];
+    for(let i=0;i<n;i++){const ng=new Array(g.length+1).fill(0);for(let j=0;j<g.length;j++){ng[j]^=g[j];ng[j+1]^=mul(g[j],EXP[i])}g=ng}
+    const res=new Array(n).fill(0);
+    for(const d of data){const f=d^res[0];res.shift();res.push(0);for(let j=0;j<n;j++)res[j]^=mul(g[j+1],f)}
+    return res;
+  }
+  const DATA=[0,19,34,55,80,108],ECC=[0,7,10,15,20,26];
+  function matrix(text,forceMask){
+    const bytes=[...new TextEncoder().encode(text)];
+    let v=1;while(v<=5&&4+8+bytes.length*8>DATA[v]*8)v++;
+    if(v>5)return null;
+    const cap=DATA[v]*8,bits=[];
+    const put=(val,len)=>{for(let i=len-1;i>=0;i--)bits.push((val>>>i)&1)};
+    put(4,4);put(bytes.length,8);for(const b of bytes)put(b,8);
+    put(0,Math.min(4,cap-bits.length));while(bits.length%8)bits.push(0);
+    const data=[];for(let i=0;i<bits.length;i+=8){let b=0;for(let j=0;j<8;j++)b=b<<1|bits[i+j];data.push(b)}
+    for(let pad=0xEC;data.length<DATA[v];pad^=0xEC^0x11)data.push(pad);
+    const all=data.concat(ecc(data,ECC[v]));
+    const size=17+4*v,m=[],fn=[];
+    for(let y=0;y<size;y++){m.push(new Array(size).fill(false));fn.push(new Array(size).fill(false))}
+    const set=(x,y,d)=>{m[y][x]=d;fn[y][x]=true};
+    for(let i=0;i<size;i++){set(6,i,i%2===0);set(i,6,i%2===0)}
+    for(const [cx,cy] of[[3,3],[size-4,3],[3,size-4]])
+      for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){const x=cx+dx,y=cy+dy;if(x>=0&&y>=0&&x<size&&y<size){const d=Math.max(Math.abs(dx),Math.abs(dy));set(x,y,d!==2&&d!==4)}}
+    if(v>=2){const p=4*v+10;for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)set(p+dx,p+dy,Math.max(Math.abs(dx),Math.abs(dy))!==1)}
+    const fmt=mask=>{
+      const d=1<<3|mask;let r=d;for(let i=0;i<10;i++)r=(r<<1)^((r>>>9)*0x537);
+      const b=(d<<10|r)^0x5412,g=i=>((b>>>i)&1)===1;
+      for(let i=0;i<=5;i++)set(8,i,g(i));
+      set(8,7,g(6));set(8,8,g(7));set(7,8,g(8));
+      for(let i=9;i<15;i++)set(14-i,8,g(i));
+      for(let i=0;i<8;i++)set(size-1-i,8,g(i));
+      for(let i=8;i<15;i++)set(8,size-15+i,g(i));
+      set(8,size-8,true);
+    };
+    fmt(0);
+    let k=0;
+    for(let right=size-1;right>=1;right-=2){
+      if(right===6)right=5;
+      for(let vert=0;vert<size;vert++)for(let j=0;j<2;j++){
+        const x=right-j,up=((right+1)&2)===0,y=up?size-1-vert:vert;
+        if(!fn[y][x]&&k<all.length*8){m[y][x]=((all[k>>>3]>>>(7-(k&7)))&1)===1;k++}
+      }
+    }
+    const MASKS=[(x,y)=>(x+y)%2===0,(x,y)=>y%2===0,(x,y)=>x%3===0,(x,y)=>(x+y)%3===0,(x,y)=>(Math.floor(x/3)+Math.floor(y/2))%2===0,
+      (x,y)=>x*y%2+x*y%3===0,(x,y)=>(x*y%2+x*y%3)%2===0,(x,y)=>((x+y)%2+x*y%3)%2===0];
+    const apply=mk=>{for(let y=0;y<size;y++)for(let x=0;x<size;x++)if(!fn[y][x]&&MASKS[mk](x,y))m[y][x]=!m[y][x]};
+    const penalty=()=>{
+      let p=0;const lines=[];
+      for(let y=0;y<size;y++){lines.push(m[y].map(b=>b?1:0).join(''));lines.push(m.map(r=>r[y]?1:0).join(''))}
+      for(const l of lines){
+        for(const run of l.match(/0{5,}|1{5,}/g)||[])p+=run.length-2;
+        for(const pat of['10111010000','00001011101']){let i=l.indexOf(pat);while(i>=0){p+=40;i=l.indexOf(pat,i+1)}}
+      }
+      for(let y=0;y<size-1;y++)for(let x=0;x<size-1;x++){const c=m[y][x];if(c===m[y][x+1]&&c===m[y+1][x]&&c===m[y+1][x+1])p+=3}
+      let dark=0;for(const r of m)for(const b of r)if(b)dark++;
+      p+=10*Math.floor(Math.abs(dark*100/(size*size)-50)/5);
+      return p;
+    };
+    let best=forceMask??-1;
+    if(best<0){let bp=Infinity;for(let mk=0;mk<8;mk++){apply(mk);fmt(mk);const p=penalty();if(p<bp){bp=p;best=mk}apply(mk)}}
+    apply(best);fmt(best);
+    return m;
+  }
+  function svg(text){
+    const m=matrix(text);if(!m)return'';
+    const n=m.length,q=4;let d='';
+    for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(m[y][x])d+=`M${x+q} ${y+q}h1v1h-1z`;
+    return`<svg viewBox="0 0 ${n+q*2} ${n+q*2}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+  }
+  return{matrix,svg};
+})();
+
+/* =====================================================================
+   АДРЕС ДЛЯ ПОДКЛЮЧЕНИЯ ДРУГИХ УСТРОЙСТВ
+   ===================================================================== */
+let lanInfo=null;
+function loadLan(){
+  if(lanInfo||!location.protocol.startsWith('http'))return Promise.resolve(lanInfo);
+  return fetch('/info',{cache:'no-store'}).then(r=>r.json()).then(j=>lanInfo=j).catch(()=>null);
+}
+function renderLan(){
+  loadLan().then(info=>{
+    for(const id of['lanOnline','lanLobby']){
+      const el=$(id);
+      if(!info||!info.ips||!info.ips.length){el.innerHTML='';continue}
+      const urls=info.ips.map(a=>`http://${a.address}:${info.port}`),main=urls[0],hs=info.ips[0].hotspot;
+      el.innerHTML=`<div class="qr">${QR.svg(main)}</div><div><b>Подключить телефон или другой компьютер</b><br>`+
+        `${hs?'Подключитесь к точке доступа этого компьютера':'Подключитесь к той же сети Wi-Fi (или точке доступа)'}, наведите камеру на код или откройте:<br>`+
+        `<span class="url">${esc(main)}</span>`+(urls.length>1?`<br><small>Другие адреса: ${urls.slice(1).map(esc).join(', ')}</small>`:'')+`</div>`;
+    }
+  });
+}
 
 setState('menu');
 requestAnimationFrame(loop);

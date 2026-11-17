@@ -20,11 +20,26 @@ const server = http.createServer((req, res) => {
   } else if (url === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('ok');
+  } else if (url === '/info') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
+    res.end(JSON.stringify({ port: Number(PORT), ips: lanIps() }));
   } else {
     res.writeHead(404);
     res.end();
   }
 });
+
+// Адреса этого компьютера в локальных сетях (Wi-Fi, кабель, точка доступа).
+// Точка доступа Windows обычно 192.168.137.1 — её ставим первой, виртуальные адаптеры — в конец.
+function lanIps() {
+  const out = [];
+  for (const [name, list] of Object.entries(os.networkInterfaces()))
+    for (const a of list || [])
+      if ((a.family === 'IPv4' || a.family === 4) && !a.internal)
+        out.push({ name, address: a.address, hotspot: a.address.startsWith('192.168.137.') });
+  const virt = /vEthernet|VirtualBox|VMware|WSL|Hyper-V|Loopback|Bluetooth|docker|vbox|virbr|Tailscale|ZeroTier/i;
+  return out.sort((a, b) => (b.hotspot - a.hotspot) || (virt.test(a.name) - virt.test(b.name)));
+}
 
 const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
 const rooms = new Map();
@@ -159,9 +174,14 @@ setInterval(() => {
   }
 }, 15000);
 
+server.on('error', err => {
+  if (err.code === 'EADDRINUSE') console.log(`Порт ${PORT} уже занят — похоже, сервер уже запущен.`);
+  else console.log('Ошибка сервера:', err.message);
+  process.exit(1);
+});
+
 server.listen(PORT, () => {
-  console.log(`\nАрена запущена: http://localhost:${PORT}`);
-  for (const list of Object.values(os.networkInterfaces()))
-    for (const a of list || []) if (a.family === 'IPv4' && !a.internal) console.log(`В локальной сети:  http://${a.address}:${PORT}`);
+  console.log(`\n[${new Date().toLocaleString('ru-RU')}] Арена запущена: http://localhost:${PORT}`);
+  for (const a of lanIps()) console.log(`  ${a.hotspot ? 'Точка доступа' : 'Локальная сеть'}: http://${a.address}:${PORT}   (${a.name})`);
   console.log('');
 });
