@@ -2001,7 +2001,7 @@ const Auth={s:null,user:null,pending:null,next:null};
 const jwtPayload=t=>{try{return JSON.parse(decodeURIComponent(escape(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')))))}catch{return{}}};
 const AUTH_ERR={invalid_credentials:'Неверная почта или пароль',email_not_confirmed:'Почта ещё не подтверждена — откройте письмо и нажмите ссылку',
   user_already_exists:'Такой аккаунт уже есть — нажмите «Войти»',email_exists:'Такой аккаунт уже есть — нажмите «Войти»',weak_password:'Слишком простой пароль: минимум 6 символов',
-  over_email_send_rate_limit:'Слишком много писем — подождите минуту',over_request_rate_limit:'Слишком много попыток — подождите минуту',
+  over_email_send_rate_limit:'Сейчас нельзя отправить ещё письмо — лимит почты исчерпан. Попробуйте позже или войдите через Google',over_request_rate_limit:'Слишком много попыток — подождите минуту',
   otp_expired:'Неверный или устаревший код — запросите новый',email_address_invalid:'Неверный адрес почты',validation_failed:'Проверьте почту и пароль',
   signup_disabled:'Регистрация отключена в настройках Supabase',provider_disabled:'Этот способ входа не включён в настройках Supabase'};
 async function sb(path,{method='GET',body,token}={}){
