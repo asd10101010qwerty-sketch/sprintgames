@@ -199,13 +199,14 @@ a.big.apk svg{width:20px;height:20px}
       <h1>ОНЛАЙН</h1>
       <div class="onl">
         <div class="panel side">
+          <div class="field"><label>Где играть</label><div class="seg" id="modeSeg"><button data-m="net">Через интернет</button><button data-m="lan">В одной сети Wi-Fi</button></div></div>
           <div class="field"><label>Ваш ник</label><input id="nick" maxlength="12" autocomplete="off"></div>
           <div class="ph" style="margin-top:6px">Создать свой сервер</div>
           <div class="field"><label>Название</label><input id="roomName" maxlength="24" autocomplete="off"></div>
           <div class="field"><label>Игроков</label><div class="seg" id="maxSeg"></div></div>
           <div class="field"><label>Игра</label><div class="seg" id="gameSeg"></div></div>
           <button class="big" id="createBtn" style="font-size:16px;padding:10px">Создать сервер</button>
-          <details class="adv"><summary>Другой адрес сервера</summary><div class="field"><label>Если друг запустил свой сервер — впишите его адрес</label><input id="addr" autocomplete="off" spellcheck="false"></div></details>
+          <details class="adv" id="advAddr"><summary>Другой адрес сервера</summary><div class="field"><label>Если друг запустил свой сервер — впишите его адрес</label><input id="addr" autocomplete="off" spellcheck="false"></div></details>
         </div>
         <div class="panel wide">
           <div class="ph"><span>Серверы <span class="st" id="netStatus"><i></i>нет соединения</span></span><div class="joinrow"><input id="joinCode" placeholder="КОД" maxlength="4" autocomplete="off"><button class="ghost sm" id="joinBtn">Войти по коду</button></div></div>
@@ -1131,25 +1132,45 @@ const crownSvg='<svg viewBox="0 0 24 24" fill="#ffd166"><path d="M3 8l4.5 4L12 5
 let maxSel=2,createGame=gi;
 $('nick').value=localStorage.getItem('nick')||('Игрок'+(100+ri(900)));
 $('nick').oninput=()=>localStorage.setItem('nick',$('nick').value);
-// Сайт на Vercel не может держать игровой сервер, поэтому там онлайн идёт через сервер в интернете (Render)
+// Игра через интернет идёт через общий сервер на Render (Vercel держать WebSocket-сервер не может).
+// Режим «Wi-Fi» — свой сервер в локальной сети (node server.js / программа SprintGames).
 const INTERNET_SERVER='sprintgames-server.onrender.com';
 const ON_VERCEL=/\.vercel\.app$/i.test(location.hostname);
-$('addr').value=IN_APP?(localStorage.getItem('serverAddr')||''):ON_VERCEL?(localStorage.getItem('serverAddr')||INTERNET_SERVER):location.protocol.startsWith('http')?location.host:(localStorage.getItem('serverAddr')||'localhost:3000');
-$('addr').onchange=()=>{localStorage.setItem('serverAddr',$('addr').value.trim());netConnect().then(()=>netSend({t:'list'})).catch(()=>{})};
+// страница открыта с самого игрового сервера (localhost, адрес в Wi-Fi или сам Render)
+const FROM_SERVER=!IN_APP&&!ON_VERCEL&&location.protocol.startsWith('http');
+const isInternet=a=>a.replace(/^\w+:\/\//,'').replace(/[:\/].*$/,'').toLowerCase()===INTERNET_SERVER;
+let netMode=localStorage.getItem('netMode');
+if(netMode!=='net'&&netMode!=='lan')netMode=FROM_SERVER&&!isInternet(location.host)?'lan':'net';
+let savedAddr=localStorage.getItem('serverAddr')||'';
+if(isInternet(savedAddr))savedAddr='';
+$('addr').value=IN_APP?savedAddr:FROM_SERVER?location.host:(savedAddr||'localhost:3000');
+function serverAddr(){return netMode==='net'?INTERNET_SERVER:$('addr').value.trim()}
+function renderMode(){
+  $('modeSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('sel',b.dataset.m===netMode));
+  $('advAddr').style.display=netMode==='lan'?'':'none';
+}
+$('modeSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  if(netMode===b.dataset.m)return;
+  netMode=b.dataset.m;localStorage.setItem('netMode',netMode);renderMode();
+  if(Net.ws){const o=Net.ws;Net.ws=null;o.close()}
+  lanInfo=null;renderLan();enterOnline();
+});
+renderMode();
+$('addr').onchange=()=>{localStorage.setItem('serverAddr',$('addr').value.trim());lanInfo=null;renderLan();netConnect().then(()=>netSend({t:'list'})).catch(()=>{})};
 const nick=()=>($('nick').value.trim()||'Игрок').slice(0,12);
 
 function showErr(t){const e=$('netErr');e.textContent=t;clearTimeout(showErr.t);showErr.t=setTimeout(()=>e.textContent='',5000)}
 function setStatus(on,txt){const s=$('netStatus');s.className='st'+(on?' on':'');s.innerHTML='<i></i>'+esc(txt||(on?'подключено':'нет соединения'))}
 function wsUrl(a){
-  let secure=location.protocol==='https:';
+  let secure=location.protocol==='https:'||isInternet(a);
   if(/^(https|wss):\/\//i.test(a))secure=true;else if(/^(http|ws):\/\//i.test(a))secure=false;
   return(secure?'wss://':'ws://')+a.replace(/^\w+:\/\//,'').replace(/\/+$/,'');
 }
 function netConnect(){
-  const addr=$('addr').value.trim();
+  const addr=serverAddr();
   if(Net.ws&&Net.addr===addr&&Net.ws.readyState<=1)return Net.ready;
   if(Net.ws){const old=Net.ws;Net.ws=null;old.close()}
-  setStatus(false,addr===INTERNET_SERVER?'подключение... (сервер может просыпаться до минуты)':'подключение...');
+  setStatus(false,isInternet(addr)?'подключение... (сервер может просыпаться до минуты)':'подключение...');
   let ws;
   try{ws=new WebSocket(wsUrl(addr))}catch(e){setStatus(false,'неверный адрес');return Promise.reject(e)}
   Net.ws=ws;Net.addr=addr;
@@ -1201,15 +1222,18 @@ function enterOnline(){
   renderCreate();
   if(!Net.ws||Net.ws.readyState!==1)renderRooms(undefined);
   const go=()=>netConnect().then(()=>netSend({t:'list'}));
-  if(IN_APP&&!(Net.ws&&Net.ws.readyState===1)){
+  const connected=Net.ws&&Net.ws.readyState===1;
+  if(netMode==='net'&&!connected){
+    // бесплатный сервер на Render засыпает: сначала будим его обычным запросом, потом подключаемся
+    setStatus(false,'подключение... (сервер может просыпаться до минуты)');
+    const ac=new AbortController(),t=setTimeout(()=>ac.abort(),70000);
+    fetch('https://'+INTERNET_SERVER+'/health',{cache:'no-store',mode:'no-cors',signal:ac.signal}).catch(()=>{})
+      .then(()=>{clearTimeout(t);return go()}).catch(()=>{});
+  }else if(IN_APP&&!connected){
     (($('addr').value.trim())?go():Promise.reject()).catch(()=>findServer().then(a=>{
       if(!a){renderRooms(null);setStatus(false,'сервер не найден');return}
       $('addr').value=a;localStorage.setItem('serverAddr',a);lanInfo=null;return go();
     })).catch(()=>{});
-  }else if(ON_VERCEL&&$('addr').value.trim()===INTERNET_SERVER&&!(Net.ws&&Net.ws.readyState===1)){
-    // бесплатный сервер засыпает: сначала будим его обычным запросом, потом подключаемся
-    setStatus(false,'подключение... (сервер может просыпаться до минуты)');
-    fetch('https://'+INTERNET_SERVER+'/health',{cache:'no-store'}).catch(()=>{}).then(()=>go()).catch(()=>{});
   }else go().catch(()=>{});
   if(!Net.listT)Net.listT=setInterval(()=>{if(state==='online')netSend({t:'list'})},2000);
 }
@@ -1223,6 +1247,11 @@ function renderCreate(){
 function renderRooms(rooms){
   const el=$('roomList');
   if(rooms===undefined){el.innerHTML='<div class="empty">Подключение к серверу...</div>';return}
+  if(rooms===null&&netMode==='net'){
+    el.innerHTML='<div class="empty">Интернет-сервер SprintGames сейчас не отвечает.<br>Проверьте интернет и попробуйте ещё раз через минуту.<br>Если вы рядом с друзьями — выберите слева «В одной сети Wi-Fi».<br><br><button class="ghost sm" id="retryBtn">Подключиться снова</button></div>';
+    $('retryBtn').onclick=()=>{if(Net.ws){const o=Net.ws;Net.ws=null;o.close()}enterOnline()};
+    return;
+  }
   if(rooms===null&&IN_APP){
     el.innerHTML='<div class="empty">Сервер SprintGames не найден.<br>Подключите телефон к той же сети Wi-Fi или точке доступа, что и компьютер с игрой,<br>и проверьте, что сервер на компьютере запущен.<br><br><button class="ghost sm" id="rescanBtn">Искать снова</button></div>';
     $('rescanBtn').onclick=()=>{$('addr').value='';if(Net.ws){const o=Net.ws;Net.ws=null;o.close()}enterOnline()};
@@ -1519,6 +1548,7 @@ let lanInfo=null;
 function loadLan(){
   if(lanInfo)return Promise.resolve(lanInfo);
   let url;
+  if(netMode!=='lan')return Promise.resolve(null);
   if(IN_APP){const a=$('addr').value.trim().replace(/^\w+:\/\//,'');if(!a)return Promise.resolve(null);url='http://'+a+'/info'}
   else if(location.protocol.startsWith('http'))url='/info';
   else return Promise.resolve(null);
