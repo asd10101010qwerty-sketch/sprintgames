@@ -32,6 +32,9 @@ function send(res, code, obj) {
 // значения из Vercel без пробелов, кавычек и случайного «имя=» при вставке
 const env = k => String(process.env[k] || '').trim().replace(/^[A-Z_]+\s*=\s*/, '').replace(/^["'`]|["'`]$/g, '').trim();
 
+// публичный ключ EmailJS не секретный (Account -> API keys -> Public Key)
+const EMAILJS_PUBLIC_KEY = 'a2Q8zBdk3etZILPf2';
+
 async function emailjs(to, code) {
   const r = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
     method: 'POST',
@@ -39,7 +42,7 @@ async function emailjs(to, code) {
     body: JSON.stringify({
       service_id: env('EMAILJS_SERVICE_ID'),
       template_id: env('EMAILJS_TEMPLATE_ID'),
-      user_id: env('EMAILJS_PUBLIC_KEY'),
+      user_id: EMAILJS_PUBLIC_KEY,
       accessToken: env('EMAILJS_PRIVATE_KEY'),
       template_params: { to_email: to, email: to, code, subject: 'Код для входа в SprintGames' }
     })
