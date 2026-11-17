@@ -2,6 +2,7 @@ package com.sprintgames.app;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -253,6 +254,18 @@ public class MainActivity extends Activity {
                 else v.vibrate(ms);
             } catch (Exception ignored) {
             }
+        }
+
+        /** Открыть сайт игры в обычном браузере (вход через Google). Только адреса sprintgames.vercel.app. */
+        @JavascriptInterface
+        public void openUrl(String url) {
+            if (url == null || !url.startsWith("https://sprintgames.vercel.app/")) return;
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                } catch (Exception ignored) {
+                }
+            });
         }
 
         /** Кнопка «Обновить»: скачать свежую игру в фоне и перезагрузить страницу. */

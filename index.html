@@ -164,6 +164,9 @@ button.dlb svg{width:18px;height:18px}
 .arow{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
 .arow button{flex:1;font-size:16px;padding:10px 14px}
 .aerr{color:#ff7b7b;font-size:13px;min-height:18px;margin-top:8px}
+.await{display:flex;align-items:center;gap:10px;margin:14px 0 4px;color:#e6e9ef;font-weight:600}
+.spin{width:18px;height:18px;border-radius:50%;border:2.5px solid #36404f;border-top-color:#ffd166;animation:spin .8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
 .totp{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:6px 0}
 .totp .qr{width:156px;flex-shrink:0;background:#fff;border-radius:10px;padding:6px}
 .totp .qr svg{display:block;width:100%;height:auto}
@@ -2016,14 +2019,16 @@ function showAuth(view,data){
   const head=t=>`<div class="ihead"><div class="aico">${SHIELD_ICON}</div><div><div class="iname">${t}</div><div class="isub">SprintGames</div></div></div>`;
   if(view==='main'){
     box.innerHTML=head('Вход')+`<p>Войдите, чтобы играть онлайн. Игра с ботом и на одном экране работает и без входа.</p>`+
-      (IN_APP?`<p class="note">Вход через Google — на сайте sprintgames.vercel.app. В приложении войдите по почте.</p>`:
-       `<button class="gbtn" id="aGoogle">${G_ICON}Войти через Google</button><div class="or">или по почте</div>`)+
+      `<button class="gbtn" id="aGoogle">${G_ICON}Войти через Google</button><div class="or">или по почте</div>`+
       `<div class="field"><label>Почта</label><input id="aEmail" type="email" autocomplete="email" placeholder="you@gmail.com"></div>`+
       `<div class="field"><label>Пароль</label><input id="aPass" type="password" autocomplete="current-password" placeholder="минимум 6 символов"></div>`+
       `<div class="arow"><button class="big" id="aLogin">Войти</button><button class="ghost" id="aSignup">Создать аккаунт</button></div>`+
       `<div class="aerr" id="aErr"></div>`+
       `<p class="note">Вход по почте защищён двухшаговой проверкой: понадобится приложение для кодов — Google Authenticator, Microsoft Authenticator или похожее.</p>`;
-    if($('aGoogle'))$('aGoogle').onclick=()=>{location.href=SB_URL+'/auth/v1/authorize?provider=google&redirect_to='+encodeURIComponent(location.origin+location.pathname)};
+    $('aGoogle').onclick=()=>{
+      if(VIA_BROWSER)appGoogleLogin(); // приложение: вход в обычном браузере, результат вернётся сюда
+      else location.href=SB_URL+'/auth/v1/authorize?provider=google&redirect_to='+encodeURIComponent(location.origin+location.pathname);
+    };
     const creds=()=>{const email=$('aEmail').value.trim(),password=$('aPass').value;if(!/^\S+@\S+\.\S+$/.test(email))throw new Error('Введите почту');if(password.length<6)throw new Error('Пароль — минимум 6 символов');return{email,password}};
     $('aLogin').onclick=async()=>{const b=$('aLogin');aerr();try{const c=creds();busy(b,true);const s=await sb('/token?grant_type=password',{method:'POST',body:c});await startMfa(s)}catch(e){busy(b,false);aerr(e.message)}};
     $('aSignup').onclick=async()=>{const b=$('aSignup');aerr();try{const c=creds();busy(b,true);
@@ -2031,6 +2036,16 @@ function showAuth(view,data){
       if(r&&r.access_token)await startMfa(r);else showAuth('sent',c.email)}catch(e){busy(b,false);aerr(e.message)}};
     $('aPass').onkeydown=e=>{if(e.key==='Enter')$('aLogin').click()};
     setTimeout(()=>$('aEmail').focus(),50);
+  }else if(view==='appwait'){
+    box.innerHTML=head('Вход через Google')+`<p>Мы открыли браузер. Войдите там через Google — после этого вход появится здесь сам.</p>`+
+      `<div class="await"><span class="spin"></span>Ждём вход из браузера...</div>`+
+      `<div class="arow"><button class="ghost" id="aReopen">Открыть браузер снова</button><button class="ghost" id="aCancel">Отмена</button></div><div class="aerr" id="aErr"></div>`;
+    $('aReopen').onclick=()=>openExternal(data);
+    $('aCancel').onclick=()=>{Auth.appWait=null;showAuth('main')};
+  }else if(view==='handoff'){
+    box.innerHTML=head(data.ok?'Готово':'Не получилось')+(data.ok?
+      `<p>Вход выполнен. <b>Вернитесь в приложение SprintGames</b> — вы уже вошли.</p><p class="note">Эту вкладку браузера можно закрыть.</p>`:
+      `<p>${esc(data.msg||'Не удалось войти')}</p><p class="note">Вернитесь в приложение и попробуйте ещё раз.</p>`);
   }else if(view==='sent'){
     box.innerHTML=head('Подтвердите почту')+`<p>Мы отправили письмо на <b>${esc(data)}</b>.</p><ol class="steps"><li>Откройте письмо и нажмите ссылку подтверждения.</li><li>Вернитесь сюда и нажмите <b>«Войти»</b> с той же почтой и паролем.</li><li>Настройте двухшаговую проверку — это займёт минуту.</li></ol><p class="note">Письма нет? Проверьте папку «Спам».</p><div class="arow"><button class="big" id="aBack">Войти</button></div>`;
     $('aBack').onclick=()=>showAuth('main');
@@ -2060,7 +2075,60 @@ function bindCode(){
   $('aCode').oninput=()=>{const v=$('aCode').value.replace(/\D/g,'').slice(0,6);$('aCode').value=v;if(v.length===6)go()};
   setTimeout(()=>$('aCode').focus(),50);
 }
-function closeAuth(){$('authBox').classList.add('hidden');Auth.next=null;if(Auth.pending&&!sessionOk())Auth.pending=null}
+function closeAuth(){$('authBox').classList.add('hidden');Auth.next=null;Auth.appWait=null;if(Auth.pending&&!sessionOk())Auth.pending=null}
+
+/* Вход через Google из приложения (и с иконки на iPhone): Google не пускает во встроенные окна,
+   поэтому вход идёт в обычном браузере, а сайт передаёт его обратно через тот же канал, что и онлайн.
+   Передаётся только refresh-токен, зашифрованный одноразовым ключом (ключ знает только приложение:
+   он в части адреса после #, которая не уходит ни на какой сервер). */
+const VIA_BROWSER=IN_APP||(isStandalone&&/iPhone|iPad|iPod/.test(navigator.userAgent));
+const SITE='https://sprintgames.vercel.app/';
+const toHex=b=>Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
+const fromHex=h=>Uint8Array.from(String(h).match(/../g)||[],x=>parseInt(x,16));
+const xorPad=(data,key)=>{if(data.length>key.length)throw new Error('long');return data.map((b,i)=>b^key[i])};
+function openExternal(url){
+  if(window.SprintApp&&typeof SprintApp.openUrl==='function')SprintApp.openUrl(url);
+  else window.open(url,'_blank');
+}
+function waitHandoff(lid,key,ms){ // ждём зашифрованный вход на всех брокерах
+  return new Promise(res=>{
+    const cs=[];let done=false;
+    const fin=v=>{if(done)return;done=true;clearTimeout(t);for(const c of cs){if(v)c.pub(CT+'login/'+lid,'',true);setTimeout(()=>c.close(),400)}res(v)};
+    const t=setTimeout(()=>fin(null),ms);
+    for(const u of CLOUD_BROKERS)mqttConnect(u,6000).then(c=>{
+      if(done){c.close();return}
+      cs.push(c);
+      c.onmsg=(tp,p)=>{if(!p)return;try{const d=JSON.parse(new TextDecoder().decode(xorPad(fromHex(p),key)));if(d&&d.rt)fin(d.rt)}catch{}};
+      c.sub(CT+'login/'+lid);
+    }).catch(()=>{});
+  });
+}
+async function appGoogleLogin(){
+  const lid=toHex(crypto.getRandomValues(new Uint8Array(16))),key=crypto.getRandomValues(new Uint8Array(256));
+  const url=SITE+'?applogin='+lid+'#k='+toHex(key);
+  const w={lid};Auth.appWait=w;
+  showAuth('appwait',url);openExternal(url);
+  const t0=Date.now();
+  while(Auth.appWait===w&&Date.now()-t0<15*60000){
+    const rt=await waitHandoff(lid,key,20000); // переподключаемся каждые 20 с — телефон мог усыпить приложение
+    if(Auth.appWait!==w)return;
+    if(!rt)continue;
+    Auth.appWait=null;
+    try{loggedIn(await sb('/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:rt}}))}
+    catch(e){showAuth('main');aerr(e.message)}
+    return;
+  }
+  if(Auth.appWait===w){Auth.appWait=null;showAuth('main');aerr('Время ожидания вышло — попробуйте ещё раз')}
+}
+// сайт, открытый из приложения: войти через Google и отдать вход приложению (сам сайт при этом не входит)
+async function handOff(al,rt){
+  const data=xorPad(new TextEncoder().encode(JSON.stringify({rt})),fromHex(al.k)),msg=toHex(data);
+  const cs=(await Promise.allSettled(CLOUD_BROKERS.map(u=>mqttConnect(u,8000)))).filter(r=>r.status==='fulfilled').map(r=>r.value);
+  if(!cs.length)throw new Error('Нет связи — проверьте интернет');
+  for(const c of cs)c.pub(CT+'login/'+al.lid,msg,true); // сохраняется на брокере, пока приложение не заберёт
+  await new Promise(r=>setTimeout(r,1200));
+  for(const c of cs)c.close();
+}
 function renderAcct(){
   const el=$('acct');if(!el)return;
   if(!SB_KEY){el.innerHTML='';return}
@@ -2074,7 +2142,22 @@ function renderAcct(){
 }
 async function authInit(){
   if(!SB_KEY){renderAcct();return}
-  const h=new URLSearchParams(location.hash.slice(1));
+  const h=new URLSearchParams(location.hash.slice(1)),q=new URLSearchParams(location.search);
+  // 1) сайт открыт приложением для входа через Google
+  if(/^[0-9a-f]{32}$/.test(q.get('applogin')||'')&&/^[0-9a-f]{512}$/.test(h.get('k')||'')){
+    sessionStorage.setItem('sgAppLogin',JSON.stringify({lid:q.get('applogin'),k:h.get('k')}));
+    history.replaceState(null,'',location.pathname);
+    location.replace(SB_URL+'/auth/v1/authorize?provider=google&redirect_to='+encodeURIComponent(location.origin+location.pathname));
+    return;
+  }
+  // 2) вернулись от Google — передать вход приложению
+  let al=null;try{al=JSON.parse(sessionStorage.getItem('sgAppLogin')||'null')}catch{}
+  if(al&&(h.get('access_token')||h.get('error_description'))){
+    sessionStorage.removeItem('sgAppLogin');history.replaceState(null,'',location.pathname);
+    if(h.get('error_description'))showAuth('handoff',{ok:false,msg:'Не удалось войти: '+h.get('error_description')});
+    else try{await handOff(al,h.get('refresh_token'));showAuth('handoff',{ok:true})}catch(e){showAuth('handoff',{ok:false,msg:e.message})}
+    renderAcct();return;
+  }
   if(h.get('access_token')||h.get('error_description')){
     history.replaceState(null,'',location.pathname+location.search); // убрать токены из адреса
     if(h.get('error_description'))toast('Не удалось войти: '+h.get('error_description'));
