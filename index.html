@@ -116,12 +116,14 @@ canvas{touch-action:none}
 .lan .url{font-family:Consolas,monospace;color:#ffd166;font-size:16px;font-weight:700;user-select:all;-webkit-user-select:all}
 .lan small{color:#6f7a8b}
 #touch{position:fixed;inset:0;pointer-events:none;z-index:6}
-#tzL,#tzR{position:absolute;top:0;bottom:0;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none}
-#tzL{left:0;width:50%}
-#tzR{right:0;width:50%}
-#stick{position:absolute;left:0;top:0;width:136px;height:136px;margin:-68px 0 0 -68px;border-radius:50%;background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.2);pointer-events:none;opacity:.45;transition:opacity .15s}
-#stick.on{opacity:1;background:rgba(255,255,255,.1)}
-#knob{position:absolute;left:50%;top:50%;width:60px;height:60px;margin:-30px 0 0 -30px;border-radius:50%;background:rgba(255,255,255,.4);box-shadow:0 0 14px rgba(0,0,0,.45);pointer-events:none}
+#tzR{position:absolute;top:0;bottom:0;right:0;width:50%;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none}
+/* крестовина со стрелками */
+#dpad{position:absolute;left:max(18px,env(safe-area-inset-left));bottom:max(18px,env(safe-area-inset-bottom));width:204px;height:204px;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none}
+#dpad .ar{position:absolute;width:68px;height:68px;border-radius:16px;background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;opacity:.6;pointer-events:none;transition:transform .06s,opacity .06s,background .06s}
+#dpad .ar svg{width:30px;height:30px}
+#dpad .ar.on{background:rgba(255,255,255,.3);opacity:1;transform:scale(.93)}
+#dpad .u{left:68px;top:0}#dpad .d{left:68px;bottom:0}#dpad .l{left:0;top:68px}#dpad .r{right:0;top:68px}
+@media (max-height:420px){#dpad{width:174px;height:174px}#dpad .ar{width:58px;height:58px}#dpad .u,#dpad .d{left:58px}#dpad .l,#dpad .r{top:58px}}
 #actBtn{position:absolute;right:max(26px,env(safe-area-inset-right));bottom:max(26px,env(safe-area-inset-bottom));width:112px;height:112px;border-radius:50%;background:rgba(255,209,102,.16);border:3px solid rgba(255,209,102,.6);color:#ffd166;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;pointer-events:none;user-select:none;-webkit-user-select:none;opacity:.6;transition:transform .08s,opacity .08s}
 #actBtn.on{background:rgba(255,209,102,.45);transform:scale(.92);opacity:1}
 #tPause{position:absolute;top:max(6px,env(safe-area-inset-top));left:50%;margin-left:-22px;width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.22);background:rgba(0,0,0,.45);pointer-events:auto;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
@@ -289,8 +291,8 @@ a.big.apk svg{width:20px;height:20px}
 <div id="adminBox" class="modal hidden"><div class="mbox adm"><button class="mx" id="adminClose" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button><div id="adminContent"></div></div></div>
 <div id="authBox" class="modal hidden"><div class="mbox"><button class="mx" id="authClose" aria-label="Закрыть"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button><div id="authContent"></div></div></div>
 <div id="touch" class="hidden">
-  <div id="tzL"></div><div id="tzR"></div>
-  <div id="stick"><div id="knob"></div></div>
+  <div id="tzR"></div>
+  <div id="dpad"><div class="ar u"><svg viewBox="0 0 24 24" style="transform:rotate(0deg)" fill="none" stroke="#e6e9ef" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></div><div class="ar d"><svg viewBox="0 0 24 24" style="transform:rotate(180deg)" fill="none" stroke="#e6e9ef" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></div><div class="ar l"><svg viewBox="0 0 24 24" style="transform:rotate(-90deg)" fill="none" stroke="#e6e9ef" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></div><div class="ar r"><svg viewBox="0 0 24 24" style="transform:rotate(90deg)" fill="none" stroke="#e6e9ef" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></div></div>
   <div id="actBtn"><span id="actLbl">Огонь</span></div>
   <div id="tPause"><svg viewBox="0 0 24 24" fill="#e6e9ef"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></div>
 </div>
@@ -2022,11 +2024,11 @@ $('lobbyLeave').onclick=()=>{netLeave();setState('online')};
    ===================================================================== */
 const isTouch=matchMedia('(pointer:coarse)').matches;
 const touch={on:isTouch,x:0,y:0,act:false};
-// abs:true — джойстик задаёт направление «куда ехать», а не «вперёд/поворот»
+// стрелки на экране работают как клавиши: вверх/вниз — вперёд/назад, влево/вправо — поворот
 function readCtrl(c){
   let x=(held(c.right)?1:0)-(held(c.left)?1:0),y=(held(c.down)?1:0)-(held(c.up)?1:0),act=held(c.fire),abs=false;
   if(touch.on&&(c===SOLO||c===CTRL[0])){
-    if(!x&&!y&&(touch.x||touch.y)){x=touch.x;y=touch.y;abs=true}
+    if(!x&&!y&&(touch.x||touch.y)){x=touch.x;y=touch.y}
     act=act||touch.act;
   }
   return{x,y,act,abs};
@@ -2038,34 +2040,34 @@ function updTouch(){
   const r=G.rows[G.rows.length-1];$('actLbl').textContent=r?r[0]:'';
 }
 (function(){
-  const L=$('tzL'),Rz=$('tzR'),st=$('stick'),kn=$('knob'),ab=$('actBtn'),RAD=58;
-  let sid=null,aid=null,cx=0,cy=0;
-  const place=()=>{st.style.left=cx+'px';st.style.top=cy+'px'};
-  const home=()=>{cx=Math.max(96,innerWidth*.13);cy=innerHeight-Math.max(96,innerHeight*.27);place();kn.style.transform='';st.classList.remove('on')};
-  home();addEventListener('resize',()=>{if(sid===null)home()});
-  const move=e=>{
-    let dx=e.clientX-cx,dy=e.clientY-cy;const d=Math.hypot(dx,dy);
-    // если палец ушёл далеко — джойстик «едет» за ним, чтобы не упираться в край
-    if(d>RAD*1.6){const k=(d-RAD*1.6)/d;cx+=dx*k;cy+=dy*k;place();dx=e.clientX-cx;dy=e.clientY-cy}
-    const dd=Math.hypot(dx,dy),kx=dd>RAD?dx/dd*RAD:dx,ky=dd>RAD?dy/dd*RAD:dy;
-    kn.style.transform=`translate(${kx}px,${ky}px)`;
-    let m=Math.min(1,dd/RAD);m=m<.18?0:Math.min(1,(m-.18)/.62);
-    const an=Math.atan2(dy,dx);touch.x=m?Math.cos(an)*m:0;touch.y=m?Math.sin(an)*m:0;
+  const Rz=$('tzR'),pad=$('dpad'),ab=$('actBtn'),AR={u:pad.querySelector('.u'),d:pad.querySelector('.d'),l:pad.querySelector('.l'),r:pad.querySelector('.r')};
+  // каждый палец на крестовине даёт направление (с диагоналями); несколько пальцев складываются
+  const fingers=new Map();
+  const dirOf=e=>{
+    const b=pad.getBoundingClientRect(),dx=e.clientX-(b.left+b.width/2),dy=e.clientY-(b.top+b.height/2),dz=b.width*.11;
+    let x=0,y=0;
+    if(Math.abs(dx)>dz&&Math.abs(dx)>Math.abs(dy)*.45)x=Math.sign(dx);
+    if(Math.abs(dy)>dz&&Math.abs(dy)>Math.abs(dx)*.45)y=Math.sign(dy);
+    return{x,y};
   };
-  L.addEventListener('pointerdown',e=>{
-    if(sid!==null)return;sid=e.pointerId;try{L.setPointerCapture(sid)}catch{}
-    cx=e.clientX;cy=e.clientY;place();st.classList.add('on');move(e);e.preventDefault();
-  });
-  L.addEventListener('pointermove',e=>{if(e.pointerId===sid){move(e);e.preventDefault()}});
-  const endL=e=>{if(e.pointerId!==sid)return;sid=null;touch.x=touch.y=0;home()};
-  L.addEventListener('pointerup',endL);L.addEventListener('pointercancel',endL);L.addEventListener('lostpointercapture',endL);
+  const sync=()=>{
+    let x=0,y=0;for(const f of fingers.values()){x+=f.x;y+=f.y}
+    touch.x=clamp(x,-1,1);touch.y=clamp(y,-1,1);
+    AR.l.classList.toggle('on',touch.x<0);AR.r.classList.toggle('on',touch.x>0);AR.u.classList.toggle('on',touch.y<0);AR.d.classList.toggle('on',touch.y>0);
+  };
+  const buzz=()=>{if(window.SprintApp&&SprintApp.vibrate)SprintApp.vibrate(8);else if(navigator.vibrate)navigator.vibrate(6)};
+  pad.addEventListener('pointerdown',e=>{try{pad.setPointerCapture(e.pointerId)}catch{}fingers.set(e.pointerId,dirOf(e));sync();buzz();e.preventDefault()});
+  pad.addEventListener('pointermove',e=>{if(!fingers.has(e.pointerId))return;const o=fingers.get(e.pointerId),n=dirOf(e);if(n.x!==o.x||n.y!==o.y){fingers.set(e.pointerId,n);sync();buzz()}e.preventDefault()});
+  const endP=e=>{if(fingers.delete(e.pointerId))sync()};
+  pad.addEventListener('pointerup',endP);pad.addEventListener('pointercancel',endP);pad.addEventListener('lostpointercapture',endP);
+  let aid=null;
   Rz.addEventListener('pointerdown',e=>{
     if(aid!==null)return;aid=e.pointerId;try{Rz.setPointerCapture(aid)}catch{}
     touch.act=true;ab.classList.add('on');if(window.SprintApp&&SprintApp.vibrate)SprintApp.vibrate(14);else if(navigator.vibrate)navigator.vibrate(12);e.preventDefault();
   });
   const endR=e=>{if(e.pointerId!==aid)return;aid=null;touch.act=false;ab.classList.remove('on')};
   Rz.addEventListener('pointerup',endR);Rz.addEventListener('pointercancel',endR);Rz.addEventListener('lostpointercapture',endR);
-  touch.reset=()=>{sid=aid=null;touch.x=touch.y=0;touch.act=false;ab.classList.remove('on');home()};
+  touch.reset=()=>{aid=null;fingers.clear();sync();touch.act=false;ab.classList.remove('on')};
   $('tPause').onclick=()=>{if(state==='play')setState('pause')};
   addEventListener('contextmenu',e=>{if(isTouch)e.preventDefault()});
 })();
