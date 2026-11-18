@@ -132,7 +132,7 @@ wss.on('connection', ws => {
           id: newId(),
           name: clean(m.name, 24, 'Сервер'),
           max: Math.min(4, Math.max(2, m.max | 0)),
-          game: Math.min(3, Math.max(0, m.game | 0)),
+          game: Math.min(4, Math.max(0, m.game | 0)),
           state: 'lobby',
           host: ws,
           members: new Map()
@@ -175,7 +175,7 @@ wss.on('connection', ws => {
 
       case 'meta':
         if (!r || r.host !== ws) return;
-        if ('game' in m && r.state === 'lobby') r.game = Math.min(3, Math.max(0, m.game | 0));
+        if ('game' in m && r.state === 'lobby') r.game = Math.min(4, Math.max(0, m.game | 0));
         if (m.state === 'playing' || m.state === 'lobby') r.state = m.state;
         pushRoom(r);
         break;
